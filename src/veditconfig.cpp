@@ -16,7 +16,7 @@ void VEditConfig::init(const QFontMetrics &p_metric,
     if (g_config->getLineDistanceHeight() <= 0) {
         m_lineDistanceHeight = 0;
     } else {
-        m_lineDistanceHeight = g_config->getLineDistanceHeight() * VUtils::calculateScaleFactor();
+        // m_lineDistanceHeight = g_config->getLineDistanceHeight() * VUtils::calculateScaleFactor();
     }
 
     m_highlightWholeBlock = m_enableVimMode;

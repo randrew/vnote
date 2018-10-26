@@ -819,7 +819,7 @@ QRectF VTextDocumentLayout::blockRectFromTextLayout(const QTextBlock &p_block,
 
     // Add bottom margin.
     if (!p_block.next().isValid()) {
-        br.adjust(0, 0, 0, m_margin);
+        br.adjust(0, 0, 0, 0);
     }
 
     return br;
