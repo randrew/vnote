@@ -13,6 +13,7 @@ Designed specially for **Markdown**, **VNote** is a Vim-inspired note-taking app
 Users from China can download the latest release of VNote from [Baidu Netdisk](http://pan.baidu.com/s/1jI5HROq).
 
 ## Windows
+### Official Zip
 ![Windows Build Status](https://ci.appveyor.com/api/projects/status/github/tamlok/vnote?svg=true)
 
 - [Github releases](https://github.com/tamlok/vnote/releases)
@@ -20,8 +21,16 @@ Users from China can download the latest release of VNote from [Baidu Netdisk](h
 
 **NOT** supported in XP since QtWebEngineProcess used by VNote could not work in XP.
 
-## Linux
+### Scoop
+VNote can be installed from `extras` bucket of Scoop.
 
+```shell
+scoop bucket add extras
+scoop install vnote
+scoop update vnote
+```
+
+## Linux
 ### AppImage
 [![Build Status](https://travis-ci.org/tamlok/vnote.svg?branch=master)](https://travis-ci.org/tamlok/vnote)
 
@@ -44,11 +53,11 @@ For other architectures, please search for `vnote` at [software.opensuse.org](ht
 We don't support Leap 42 and below due to the Qt version. Please use AppImage or build it yourself.
 
 ### Arch Linux
-VNote on Arch Linux can be installed from the AUR as [vnote](https://aur.archlinux.org/packages/vnote/):
+VNote on Arch Linux can be installed from the AUR as [vnote](https://aur.archlinux.org/packages/vnote-bin/):
 
 ```shell
-git clone https://aur.archlinux.org/vnote.git
-cd vnote
+git clone https://aur.archlinux.org/vnote-bin.git
+cd vnote-bin
 makepkg -sic
 ```
 
@@ -185,7 +194,7 @@ In VNote, almost everything is configurable, such as background color, font, and
 - [Qt 5.9](http://qt-project.org) (L-GPL v3)
 - [PEG Markdown Highlight](http://hasseg.org/peg-markdown-highlight/) (MIT License)
 - [Hoedown 3.0.7](https://github.com/hoedown/hoedown/) (ISC License)
-- [Marked](https://github.com/chjj/marked) (MIT License)
+- [Marked 0.5.1](https://github.com/markedjs/marked) (MIT License)
 - [Highlight.js](https://github.com/isagalaev/highlight.js/) (BSD License)
 - [Ionicons 2.0.1](https://github.com/driftyco/ionicons/) (MIT License)
 - [markdown-it 8.3.1](https://github.com/markdown-it/markdown-it) (MIT License)

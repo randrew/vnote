@@ -25,6 +25,7 @@ namespace ClipboardConfig
     static const QString c_isCut = "is_cut";
     static const QString c_files = "files";
     static const QString c_dirs = "dirs";
+    static const QString c_format = "text/json";
 }
 
 enum class OpenFileMode {Read = 0, Edit, Invalid };
@@ -43,11 +44,14 @@ namespace HtmlHolder
     static const QString c_JSHolder = "JS_PLACE_HOLDER";
     static const QString c_cssHolder = "CSS_PLACE_HOLDER";
     static const QString c_codeBlockCssHolder = "HIGHLIGHTJS_CSS_PLACE_HOLDER";
+    static const QString c_commonCssHolder = "COMMON_CSS_PLACE_HOLDER";
     static const QString c_globalStyleHolder = "/* STYLE_GLOBAL_PLACE_HOLDER */";
     static const QString c_extraHolder = "<!-- EXTRA_PLACE_HOLDER -->";
     static const QString c_bodyHolder = "<!-- BODY_PLACE_HOLDER -->";
     static const QString c_headHolder = "<!-- HEAD_PLACE_HOLDER -->";
     static const QString c_styleHolder = "/* STYLE_PLACE_HOLDER */";
+    static const QString c_outlineStyleHolder = "/* STYLE_OUTLINE_PLACE_HOLDER */";
+    static const QString c_headTitleHolder = "<!-- HEAD_TITLE_PLACE_HOLDER -->";
 }
 
 // Directory Config file items.
@@ -77,6 +81,15 @@ namespace SnippetConfig
     static const QString c_selectionMark = "selection_mark";
     static const QString c_shortcut = "shortcut";
     static const QString c_autoIndent = "auto_indent";
+}
+
+namespace Shortcut
+{
+    static const QString c_expand = "Ctrl+B";
+    static const QString c_info = "F2";
+    static const QString c_copy = "Ctrl+C";
+    static const QString c_cut = "Ctrl+X";
+    static const QString c_paste = "Ctrl+V";
 }
 
 static const QString c_emptyHeaderName = "[EMPTY]";

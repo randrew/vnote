@@ -101,6 +101,19 @@ protected:
 
     void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
 
+    QStringList mimeTypes() const Q_DECL_OVERRIDE;
+
+    Qt::DropActions supportedDropActions() const Q_DECL_OVERRIDE;
+
+    // Will be called inside dropEvent().
+    bool dropMimeData(QTreeWidgetItem *p_parent,
+                      int p_index,
+                      const QMimeData *p_data,
+                      Qt::DropAction p_action) Q_DECL_OVERRIDE;
+
+    // Drop the data.
+    void dropEvent(QDropEvent *p_event) Q_DECL_OVERRIDE;
+
 private:
     // Build the subtree of @p_parent recursively to the depth @p_depth.
     // @p_depth: negative - infinite levels.
@@ -163,11 +176,6 @@ private:
 
     // Magic number for clipboard operations.
     int m_magicForClipboard;
-
-    static const QString c_infoShortcutSequence;
-    static const QString c_copyShortcutSequence;
-    static const QString c_cutShortcutSequence;
-    static const QString c_pasteShortcutSequence;
 };
 
 inline QPointer<VDirectory> VDirectoryTree::getVDirectory(QTreeWidgetItem *p_item) const

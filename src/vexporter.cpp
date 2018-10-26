@@ -55,8 +55,13 @@ void VExporter::prepareExport(const ExportOption &p_opt)
                                                   isPdf && p_opt.m_pdfOpt.m_wkhtmltopdf,
                                                   extraToc);
 
+    bool outline = p_opt.m_htmlOpt.m_outlinePanel
+                   && !isPdf
+                   && (p_opt.m_format == ExportFormat::HTML
+                       || p_opt.m_format == ExportFormat::Custom);
     m_exportHtmlTemplate = VUtils::generateExportHtmlTemplate(p_opt.m_renderBg,
-                                                              isPdf && p_opt.m_pdfOpt.m_wkhtmltopdf);
+                                                              isPdf && p_opt.m_pdfOpt.m_wkhtmltopdf,
+                                                              outline);
 
     m_pageLayout = *(p_opt.m_pdfOpt.m_layout);
 
@@ -331,7 +336,10 @@ bool VExporter::exportToPDFViaWK(VDocument *p_webDocument,
                 }
 
                 QString htmlPath = tmpDir.filePath("vnote_tmp.html");
+                QString title = p_webDocument->getFile()->getName();
+                title = QFileInfo(title).completeBaseName();
                 if (!outputToHTMLFile(htmlPath,
+                                      title,
                                       p_headContent,
                                       p_styleContent,
                                       p_bodyContent,
@@ -391,7 +399,10 @@ bool VExporter::exportToCustom(VDocument *p_webDocument,
                 }
 
                 QString htmlPath = tmpDir.filePath("vnote_tmp.html");
+                QString title = p_webDocument->getFile()->getName();
+                title = QFileInfo(title).completeBaseName();
                 if (!outputToHTMLFile(htmlPath,
+                                      title,
                                       p_headContent,
                                       p_styleContent,
                                       p_bodyContent,
@@ -558,7 +569,10 @@ bool VExporter::exportToHTML(VDocument *p_webDocument,
 
                 Q_ASSERT(!p_filePath.isEmpty());
 
+                QString title = p_webDocument->getFile()->getName();
+                title = QFileInfo(title).completeBaseName();
                 if (!outputToHTMLFile(p_filePath,
+                                      title,
                                       p_headContent,
                                       p_styleContent,
                                       p_bodyContent,
@@ -966,6 +980,7 @@ int VExporter::startProcess(const QString &p_cmd)
 }
 
 bool VExporter::outputToHTMLFile(const QString &p_file,
+                                 const QString &p_title,
                                  const QString &p_headContent,
                                  const QString &p_styleContent,
                                  const QString &p_bodyContent,
@@ -984,6 +999,11 @@ bool VExporter::outputToHTMLFile(const QString &p_file,
     qDebug() << "HTML files folder" << resFolderPath;
 
     QString html(m_exportHtmlTemplate);
+    if (!p_title.isEmpty()) {
+        html.replace(HtmlHolder::c_headTitleHolder,
+                     "<title>" + VUtils::escapeHtml(p_title) + "</title>");
+    }
+
     if (!p_styleContent.isEmpty() && p_embedCssStyle) {
         QString content(p_styleContent);
         embedStyleResources(content);

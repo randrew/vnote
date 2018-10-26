@@ -449,11 +449,18 @@ public:
 
     const QString &getSnippetConfigFilePath() const;
 
+    const QString getKeyboardLayoutConfigFilePath() const;
+
     // Read all available templates files in c_templateConfigFolder.
     QVector<QString> getNoteTemplates(DocType p_type = DocType::Unknown) const;
 
     // Get the folder c_codeBlockStyleConfigFolder in the config folder.
     const QString &getCodeBlockStyleConfigFolder() const;
+
+    // Get the folder c_resourceConfigFolder in the config folder.
+    QString getResourceConfigFolder() const;
+
+    const QString &getCommonCssUrl() const;
 
     // All the editor styles.
     QList<QString> getEditorStyles() const;
@@ -565,10 +572,20 @@ public:
     int getSmartLivePreview() const;
     void setSmartLivePreview(int p_preview);
 
-    bool getMultipleKeyboardLayout() const;
-
     bool getInsertNewNoteInFront() const;
     void setInsertNewNoteInFront(bool p_enabled);
+
+    QString getKeyboardLayout() const;
+    void setKeyboardLayout(const QString &p_name);
+
+    QList<int> getKeyboardLayoutMappingKeys() const;
+
+    bool getParsePasteLocalImage() const;
+
+    bool versionChanged() const;
+
+    const QColor &getBaseBackground() const;
+    void setBaseBackground(const QColor &p_bg);
 
 private:
     // Look up a config from user and default settings.
@@ -655,6 +672,8 @@ private:
     void initCodeBlockCssStyles();
 
     QString getEditorStyleFile() const;
+
+    void checkVersion();
 
     // Default font and palette.
     QFont m_defaultEditFont;
@@ -1019,11 +1038,17 @@ private:
     // Smart live preview.
     int m_smartLivePreview;
 
-    // Support multiple keyboard layout.
-    bool m_multipleKeyboardLayout;
-
     // Whether insert new note in front.
     bool m_insertNewNoteInFront;
+
+    // Whether download image from parse and paste.
+    bool m_parsePasteLocalImage;
+
+    // Whether the VNote instance has different version of vnote.ini.
+    bool m_versionChanged;
+
+    // Base background of MainWindow.
+    QColor m_baseBackground;
 
     // The name of the config file in each directory.
     static const QString c_dirConfigFile;
@@ -1039,6 +1064,9 @@ private:
 
     // The name of the config file for snippets folder.
     static const QString c_snippetConfigFile;
+
+    // The name of the config file for keyboard layouts.
+    static const QString c_keyboardLayoutConfigFile;
 
     // QSettings for the user configuration
     QSettings *userSettings;
@@ -1070,6 +1098,9 @@ private:
 
     // The default export output folder name.
     static const QString c_exportFolderName;
+
+    // The folder name of resource files.
+    static const QString c_resourceConfigFolder;
 };
 
 
@@ -2613,11 +2644,6 @@ inline void VConfigManager::setSmartLivePreview(int p_preview)
     setConfigToSettings("global", "smart_live_preview", m_smartLivePreview);
 }
 
-inline bool VConfigManager::getMultipleKeyboardLayout() const
-{
-    return m_multipleKeyboardLayout;
-}
-
 inline bool VConfigManager::getInsertNewNoteInFront() const
 {
     return m_insertNewNoteInFront;
@@ -2656,5 +2682,52 @@ inline void VConfigManager::setHighlightMatchesInPage(bool p_enabled)
 
     m_highlightMatchesInPage = p_enabled;
     setConfigToSettings("global", "highlight_matches_in_page", m_highlightMatchesInPage);
+}
+
+inline QString VConfigManager::getKeyboardLayout() const
+{
+    return getConfigFromSettings("global", "keyboard_layout").toString();
+}
+
+inline void VConfigManager::setKeyboardLayout(const QString &p_name)
+{
+    setConfigToSettings("global", "keyboard_layout", p_name);
+}
+
+inline QList<int> VConfigManager::getKeyboardLayoutMappingKeys() const
+{
+    QStringList keyStrs = getConfigFromSettings("global",
+                                                "keyboard_layout_mapping_keys").toStringList();
+
+    QList<int> keys;
+    for (auto & str : keyStrs) {
+        bool ok;
+        int tmp = str.toInt(&ok);
+        if (ok) {
+            keys.append(tmp);
+        }
+    }
+
+    return keys;
+}
+
+inline bool VConfigManager::getParsePasteLocalImage() const
+{
+    return m_parsePasteLocalImage;
+}
+
+inline bool VConfigManager::versionChanged() const
+{
+    return m_versionChanged;
+}
+
+inline const QColor &VConfigManager::getBaseBackground() const
+{
+    return m_baseBackground;
+}
+
+inline void VConfigManager::setBaseBackground(const QColor &p_bg)
+{
+    m_baseBackground = p_bg;
 }
 #endif // VCONFIGMANAGER_H

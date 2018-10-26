@@ -45,6 +45,20 @@ public:
 
     QTreeWidgetItem *getItemFromIndex(const QModelIndex &p_index) const;
 
+    // Next visible item.
+    static QTreeWidgetItem *nextItem(const QTreeWidget* p_tree,
+                                     QTreeWidgetItem *p_item,
+                                     bool p_forward);
+
+    // Whether @p_tree is expanded.
+    static bool isTreeExpanded(const QTreeWidget *p_tree);
+
+    static void expandCollapseAll(QTreeWidget *p_tree);
+
+    static const QTreeWidgetItem *topLevelTreeItem(const QTreeWidgetItem *p_item);
+
+    static int childIndexOfTreeItem(const QTreeWidgetItem *p_item);
+
 protected:
     void keyPressEvent(QKeyEvent *p_event) Q_DECL_OVERRIDE;
 
@@ -55,6 +69,8 @@ protected:
 signals:
     // Rows [@p_first, @p_last] were moved to @p_row.
     void rowsMoved(int p_first, int p_last, int p_row);
+
+    void itemExpandedOrCollapsed();
 
 private slots:
     void handleSearchModeTriggered(bool p_inSearchMode, bool p_focus);
@@ -67,16 +83,16 @@ private:
 
     QGraphicsOpacityEffect *getSearchInputEffect() const;
 
-    QTreeWidgetItem *nextSibling(QTreeWidgetItem *p_item, bool p_forward);
-
-    // Next visible item.
-    QTreeWidgetItem *nextItem(QTreeWidgetItem *p_item, bool p_forward);
+    static QTreeWidgetItem *nextSibling(const QTreeWidget *p_widget,
+                                        QTreeWidgetItem *p_item,
+                                        bool p_forward);
 
     VSimpleSearchInput *m_searchInput;
 
     VStyledItemDelegate *m_delegate;
 
     QTimer *m_searchColdTimer;
+    QTimer *m_expandTimer;
 
     bool m_fitContent;
 };

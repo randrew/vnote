@@ -6,6 +6,8 @@
 #include <QScopedPointer>
 #include <QClipboard>
 #include <QMimeDatabase>
+#include <QTemporaryFile>
+#include <QProgressDialog>
 
 #include "vdocument.h"
 #include "utils/veditutils.h"
@@ -29,6 +31,7 @@
 #include "vplantumlhelper.h"
 #include "vgraphvizhelper.h"
 #include "vmdtab.h"
+#include "vdownloader.h"
 
 extern VWebUtils *g_webUtils;
 
@@ -364,6 +367,14 @@ void VMdEditor::contextMenuEvent(QContextMenuEvent *p_event)
         if (mimeData->hasHtml()) {
             initPasteAfterParseMenu(pasteAct, menu.data());
         }
+
+        QAction *pptAct = new QAction(tr("Paste As Plain Text"), menu.data());
+        VUtils::fixTextWithShortcut(pptAct, "PastePlainText");
+        connect(pptAct, &QAction::triggered,
+                this, [this]() {
+                    pastePlainText();
+                });
+        insertActionAfter(pasteAct, pptAct, menu.data());
     }
 
     if (!textCursor().hasSelection()) {
@@ -410,6 +421,8 @@ void VMdEditor::contextMenuEvent(QContextMenuEvent *p_event)
         if (firstAct) {
             menu->insertSeparator(firstAct);
         }
+
+        initAttachmentMenu(menu.data());
     }
 
     menu->exec(p_event->globalPos());
@@ -773,10 +786,10 @@ void VMdEditor::clearUnusedImages()
         for (auto const & item : unusedImages) {
             bool ret = false;
             if (m_file->getType() == FileType::Note) {
-                const VNoteFile *tmpFile = dynamic_cast<const VNoteFile *>((VFile *)m_file);
+                const VNoteFile *tmpFile = static_cast<const VNoteFile *>((VFile *)m_file);
                 ret = VUtils::deleteFile(tmpFile->getNotebook(), item, false);
             } else if (m_file->getType() == FileType::Orphan) {
-                const VOrphanFile *tmpFile = dynamic_cast<const VOrphanFile *>((VFile *)m_file);
+                const VOrphanFile *tmpFile = static_cast<const VOrphanFile *>((VFile *)m_file);
                 ret = VUtils::deleteFile(tmpFile, item, false);
             } else {
                 Q_ASSERT(false);
@@ -867,10 +880,6 @@ void VMdEditor::insertFromMimeData(const QMimeData *p_source)
     }
 
     if (processUrlFromMimeData(p_source)) {
-        return;
-    }
-
-    if (processTextFromMimeData(p_source)) {
         return;
     }
 
@@ -1169,7 +1178,15 @@ void VMdEditor::htmlToTextFinished(int p_id, int p_timeStamp, const QString &p_t
 {
     Q_UNUSED(p_id);
     if (m_copyTimeStamp == p_timeStamp && !p_text.isEmpty()) {
-        m_editOps->insertText(p_text);
+        emit m_object->statusMessage(tr("Inserting parsed Markdown text"));
+
+        QString text(p_text);
+        if (g_config->getParsePasteLocalImage()) {
+            // May take long time.
+            replaceTextWithLocalImages(text);
+        }
+
+        m_editOps->insertText(text);
         emit m_object->statusMessage(tr("Parsed Markdown text inserted"));
     }
 }
@@ -1680,9 +1697,7 @@ void VMdEditor::exportGraphAndCopy(const QString &p_lang,
                                    const QString &p_text,
                                    const QString &p_format)
 {
-    m_exportTempFile.reset(new QTemporaryFile(QDir::tempPath()
-                                              + QDir::separator()
-                                              + "XXXXXX." + p_format));
+    m_exportTempFile.reset(VUtils::createTemporaryFile(p_format));
     if (!m_exportTempFile->open()) {
         VUtils::showMessage(QMessageBox::Warning,
                             tr("Warning"),
@@ -1708,6 +1723,7 @@ void VMdEditor::exportGraphAndCopy(const QString &p_lang,
     }
 
     if (out.isEmpty() || m_exportTempFile->write(out) == -1) {
+        m_exportTempFile->close();
         VUtils::showMessage(QMessageBox::Warning,
                             tr("Warning"),
                             tr("Fail to export graph."),
@@ -1716,8 +1732,11 @@ void VMdEditor::exportGraphAndCopy(const QString &p_lang,
                             QMessageBox::Ok,
                             this);
     } else {
+        m_exportTempFile->close();
+
         QClipboard *clipboard = QApplication::clipboard();
         clipboard->clear();
+
         QImage img;
         img.loadFromData(out, p_format.toLocal8Bit().data());
         if (!img.isNull()) {
@@ -1730,8 +1749,6 @@ void VMdEditor::exportGraphAndCopy(const QString &p_lang,
             emit m_object->statusMessage(tr("Fail to read exported image: %1").arg(filePath));
         }
     }
-
-    m_exportTempFile->close();
 }
 
 void VMdEditor::parseAndPaste()
@@ -1827,167 +1844,356 @@ bool VMdEditor::processImageFromMimeData(const QMimeData *p_source)
 
 bool VMdEditor::processUrlFromMimeData(const QMimeData *p_source)
 {
-    if (!p_source->hasUrls()) {
-        return false;
-    }
-
-    QList<QUrl> urls = p_source->urls();
-    if (urls.size() == 1) {
-        bool isImage = VUtils::isImageURL(urls[0]);
-        bool isLocalFile = urls[0].isLocalFile()
-                           && QFileInfo::exists(urls[0].toLocalFile());
-
-        QString localTextFilePath;
-        if (!isImage && isLocalFile) {
-            localTextFilePath = urls[0].toLocalFile();
-            QMimeDatabase mimeDatabase;
-            const QMimeType mimeType = mimeDatabase.mimeTypeForFile(localTextFilePath);
-            if (mimeType.isValid() && !mimeType.inherits(QStringLiteral("text/plain"))) {
-                localTextFilePath.clear();
-            }
+    QUrl url;
+    if (p_source->hasUrls()) {
+        QList<QUrl> urls = p_source->urls();
+        if (urls.size() == 1) {
+            url = urls[0];
         }
-
-        VSelectDialog dialog(tr("Insert From Clipboard"), this);
-        if (isImage) {
-            dialog.addSelection(tr("Insert As Image"), 0);
-            dialog.addSelection(tr("Insert As Image Link"), 1);
-        }
-
-        dialog.addSelection(tr("Insert As Link"), 2);
-        if (isLocalFile) {
-            dialog.addSelection(tr("Insert As Relative Link"), 3);
-        }
-        dialog.addSelection(tr("Insert As Text"), 4);
-        if (!localTextFilePath.isEmpty()) {
-            dialog.addSelection(tr("Insert File Content"), 5);
-        }
-
-        // FIXME: After calling dialog.exec(), p_source->hasUrl() returns false.
-        if (dialog.exec() == QDialog::Accepted) {
-            bool relativeLink = false;
-            switch (dialog.getSelection()) {
-            case 0:
-            {
-                // Insert As Image.
-                m_editOps->insertImageFromURL(urls[0]);
-                return true;
-            }
-
-            case 1:
-            {
-                // Insert As Image Link.
-                insertImageLink("", urls[0].isLocalFile() ? urls[0].toString(QUrl::EncodeSpaces)
-                                                          : urls[0].toString());
-                return true;
-            }
-
-            case 3:
-                // Insert As Relative link.
-                relativeLink = true;
-                V_FALLTHROUGH;
-
-            case 2:
-            {
-                // Insert As Link.
-                QString ut;
-                if (relativeLink) {
-                    QDir dir(m_file->fetchBasePath());
-                    ut = dir.relativeFilePath(urls[0].toLocalFile());
-                    ut = QUrl(ut).toString(QUrl::EncodeSpaces);
-                } else {
-                    ut = urls[0].isLocalFile() ? urls[0].toString(QUrl::EncodeSpaces)
-                                               : urls[0].toString();
-                }
-
-                VInsertLinkDialog ld(QObject::tr("Insert Link"),
-                                     "",
-                                     "",
-                                     "",
-                                     ut,
-                                     false,
-                                     this);
-                if (ld.exec() == QDialog::Accepted) {
-                    QString linkText = ld.getLinkText();
-                    QString linkUrl = ld.getLinkUrl();
-                    Q_ASSERT(!linkText.isEmpty() && !linkUrl.isEmpty());
-                    m_editOps->insertLink(linkText, linkUrl);
-                }
-
-                return true;
-            }
-
-            case 4:
-            {
-                // Insert As Text.
-                if (p_source->hasText()) {
-                    m_editOps->insertText(p_source->text());
-                } else {
-                    m_editOps->insertText(urls[0].toString());
-                }
-
-                return true;
-            }
-
-            case 5:
-            {
-                // Insert File Content.
-                Q_ASSERT(!localTextFilePath.isEmpty());
-                m_editOps->insertText(VUtils::readFileFromDisk(localTextFilePath));
-                return true;
-            }
-
-            default:
-                Q_ASSERT(false);
-                break;
-            }
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-bool VMdEditor::processTextFromMimeData(const QMimeData *p_source)
-{
-    if (!p_source->hasText()) {
-        return false;
-    }
-
-    QString text = p_source->text();
-    if (VUtils::isImageURLText(text)) {
-        // The text is a URL to an image.
-        VSelectDialog dialog(tr("Insert From Clipboard"), this);
-        dialog.addSelection(tr("Insert As Image"), 0);
-        dialog.addSelection(tr("Insert As Text"), 1);
-        dialog.addSelection(tr("Insert As Image Link"), 2);
-
-        if (dialog.exec() == QDialog::Accepted) {
-            int selection = dialog.getSelection();
-            if (selection == 0) {
-                // Insert as image.
-                QUrl url;
-                if (QFileInfo::exists(text)) {
-                    url = QUrl::fromLocalFile(text);
-                } else {
-                    url = QUrl(text);
-                }
-
-                if (url.isValid()) {
-                    m_editOps->insertImageFromURL(url);
-                }
-
-                return true;
-            } else if (selection == 2) {
-                // Insert as link.
-                insertImageLink("", text);
-                return true;
-            }
+    } else if (p_source->hasText()) {
+        // Try to get URL from text.
+        QString text = p_source->text();
+        if (QFileInfo::exists(text)) {
+            url = QUrl::fromLocalFile(text);
         } else {
+            url = QUrl(text);
+            if (url.scheme() != "https" && url.scheme() != "http") {
+                url.clear();
+            }
+        }
+    }
+
+    if (!url.isValid()) {
+        return false;
+    }
+
+    bool isImage = VUtils::isImageURL(url);
+    bool isLocalFile = url.isLocalFile()
+                       && QFileInfo::exists(url.toLocalFile());
+
+    QString localTextFilePath;
+    if (!isImage && isLocalFile) {
+        localTextFilePath = url.toLocalFile();
+        QMimeDatabase mimeDatabase;
+        const QMimeType mimeType = mimeDatabase.mimeTypeForFile(localTextFilePath);
+        if (mimeType.isValid() && !mimeType.inherits(QStringLiteral("text/plain"))) {
+            localTextFilePath.clear();
+        }
+    }
+
+    VSelectDialog dialog(tr("Insert From Clipboard"), this);
+    if (isImage) {
+        dialog.addSelection(tr("Insert As Image"), 0);
+        dialog.addSelection(tr("Insert As Image Link"), 1);
+    }
+
+    dialog.addSelection(tr("Insert As Link"), 2);
+    if (isLocalFile) {
+        dialog.addSelection(tr("Insert As Relative Link"), 3);
+
+        // Attach as attachment.
+        if (m_file->getType() == FileType::Note) {
+            VNoteFile *note = static_cast<VNoteFile *>((VFile *)m_file);
+            if (-1 == note->findAttachmentByPath(url.toLocalFile(), false)) {
+                dialog.addSelection(tr("Attach And Insert Link"), 6);
+            }
+        }
+    }
+
+    dialog.addSelection(tr("Insert As Text"), 4);
+    if (!localTextFilePath.isEmpty()) {
+        dialog.addSelection(tr("Insert File Content"), 5);
+    }
+
+    // FIXME: After calling dialog.exec(), p_source->hasUrl() returns false.
+    if (dialog.exec() == QDialog::Accepted) {
+        bool relativeLink = false;
+        switch (dialog.getSelection()) {
+        case 0:
+        {
+            // Insert As Image.
+            m_editOps->insertImageFromURL(url);
             return true;
         }
+
+        case 1:
+        {
+            // Insert As Image Link.
+            insertImageLink("", url.isLocalFile() ? url.toString(QUrl::EncodeSpaces)
+                                                  : url.toString());
+            return true;
+        }
+
+        case 6:
+        {
+            // Attach And Insert Link.
+            QString file = url.toLocalFile();
+
+            Q_ASSERT(m_file->getType() == FileType::Note);
+            VNoteFile *note = static_cast<VNoteFile *>((VFile *)m_file);
+            QString destFile;
+            if (!note->addAttachment(file, &destFile)) {
+                VUtils::showMessage(QMessageBox::Warning,
+                                    tr("Warning"),
+                                    tr("Fail to add attachment %1 for note <span style=\"%2\">%3</span>.")
+                                      .arg(file)
+                                      .arg(g_config->c_dataTextStyle)
+                                      .arg(note->getName()),
+                                    "",
+                                    QMessageBox::Ok,
+                                    QMessageBox::Ok,
+                                    this);
+                return true;
+            }
+
+            emit m_object->statusMessage(tr("1 file added as attachment"));
+
+            // Update url to point to the attachment file.
+            Q_ASSERT(!destFile.isEmpty());
+            url = QUrl::fromLocalFile(destFile);
+
+            V_FALLTHROUGH;
+        }
+
+        case 3:
+            // Insert As Relative link.
+            relativeLink = true;
+            V_FALLTHROUGH;
+
+        case 2:
+        {
+            // Insert As Link.
+            QString initLinkText;
+            if (isLocalFile) {
+                initLinkText = QFileInfo(url.toLocalFile()).fileName();
+            }
+
+            QString ut;
+            if (relativeLink) {
+                QDir dir(m_file->fetchBasePath());
+                ut = dir.relativeFilePath(url.toLocalFile());
+                ut = QUrl(ut).toString(QUrl::EncodeSpaces);
+            } else {
+                ut = url.isLocalFile() ? url.toString(QUrl::EncodeSpaces)
+                                       : url.toString();
+            }
+
+            VInsertLinkDialog ld(QObject::tr("Insert Link"),
+                                 "",
+                                 "",
+                                 initLinkText,
+                                 ut,
+                                 false,
+                                 this);
+            if (ld.exec() == QDialog::Accepted) {
+                QString linkText = ld.getLinkText();
+                QString linkUrl = ld.getLinkUrl();
+                Q_ASSERT(!linkText.isEmpty() && !linkUrl.isEmpty());
+                m_editOps->insertLink(linkText, linkUrl);
+            }
+
+            return true;
+        }
+
+        case 4:
+        {
+            // Insert As Text.
+            if (p_source->hasText()) {
+                m_editOps->insertText(p_source->text());
+            } else {
+                m_editOps->insertText(url.toString());
+            }
+
+            return true;
+        }
+
+        case 5:
+        {
+            // Insert File Content.
+            Q_ASSERT(!localTextFilePath.isEmpty());
+            m_editOps->insertText(VUtils::readFileFromDisk(localTextFilePath));
+            return true;
+        }
+
+        default:
+            Q_ASSERT(false);
+            break;
+        }
     }
 
-    Q_ASSERT(p_source->hasText());
-    return false;
+    return true;
+}
+
+void VMdEditor::replaceTextWithLocalImages(QString &p_text)
+{
+    QVector<VElementRegion> regs = VUtils::fetchImageRegionsUsingParser(p_text);
+    if (regs.isEmpty()) {
+        return;
+    }
+
+    // Sort it in ascending order.
+    std::sort(regs.begin(), regs.end());
+
+    QProgressDialog proDlg(tr("Fetching images to local folder..."),
+                           tr("Abort"),
+                           0,
+                           regs.size(),
+                           this);
+    proDlg.setWindowModality(Qt::WindowModal);
+    proDlg.setWindowTitle(tr("Fetching Images To Local Folder"));
+
+    QRegExp zhihuRegExp("^https?://www\\.zhihu\\.com/equation\\?tex=(.+)$");
+
+    QRegExp regExp(VUtils::c_imageLinkRegExp);
+    for (int i = regs.size() - 1; i >= 0; --i) {
+        proDlg.setValue(regs.size() - 1 - i);
+        if (proDlg.wasCanceled()) {
+            break;
+        }
+
+        const VElementRegion &reg = regs[i];
+        QString linkText = p_text.mid(reg.m_startPos, reg.m_endPos - reg.m_startPos);
+        if (regExp.indexIn(linkText) == -1) {
+            continue;
+        }
+
+        QString imageTitle = VUtils::purifyImageTitle(regExp.cap(1).trimmed());
+        QString imageUrl = regExp.cap(2).trimmed();
+
+        const int maxUrlLength = 100;
+        QString urlToDisplay(imageUrl);
+        if (urlToDisplay.size() > maxUrlLength) {
+            urlToDisplay = urlToDisplay.left(maxUrlLength) + "...";
+        }
+        proDlg.setLabelText(tr("Fetching image: %1").arg(urlToDisplay));
+
+        // Handle equation from zhihu.com like http://www.zhihu.com/equation?tex=P.
+        if (zhihuRegExp.indexIn(imageUrl) != -1) {
+            QString tex = zhihuRegExp.cap(1).trimmed();
+
+            // Remove the +.
+            tex.replace(QChar('+'), " ");
+
+            tex = QUrl::fromPercentEncoding(tex.toUtf8());
+            if (tex.isEmpty()) {
+                continue;
+            }
+
+            tex = "$" + tex + "$";
+            p_text.replace(reg.m_startPos,
+                           reg.m_endPos - reg.m_startPos,
+                           tex);
+            continue;
+        }
+
+        QString destImagePath, urlInLink;
+
+        // Only handle absolute file path or network path.
+        QString srcImagePath;
+        QFileInfo info(VUtils::purifyUrl(imageUrl));
+
+        // For network image.
+        QScopedPointer<QTemporaryFile> tmpFile;
+
+        if (info.exists()) {
+            if (info.isAbsolute()) {
+                // Absolute local path.
+                srcImagePath = info.absoluteFilePath();
+            }
+        } else {
+            // Network path.
+            QByteArray data = VDownloader::downloadSync(QUrl(imageUrl));
+            if (!data.isEmpty()) {
+                tmpFile.reset(VUtils::createTemporaryFile(info.suffix()));
+                if (tmpFile->open() && tmpFile->write(data) > -1) {
+                    srcImagePath = tmpFile->fileName();
+                }
+
+                // Need to close it explicitly to flush cache of small file.
+                tmpFile->close();
+            }
+        }
+
+        if (srcImagePath.isEmpty()) {
+            continue;
+        }
+
+        // Insert image without inserting text.
+        auto ops = static_cast<VMdEditOperations *>(m_editOps);
+        ops->insertImageFromPath(imageTitle,
+                                 m_file->fetchImageFolderPath(),
+                                 m_file->getImageFolderInLink(),
+                                 srcImagePath,
+                                 false,
+                                 destImagePath,
+                                 urlInLink);
+        if (urlInLink.isEmpty()) {
+            continue;
+        }
+
+        // Replace URL in link.
+        QString newLink = QString("![%1](%2%3%4)")
+                                 .arg(imageTitle)
+                                 .arg(urlInLink)
+                                 .arg(regExp.cap(3))
+                                 .arg(regExp.cap(6));
+        p_text.replace(reg.m_startPos,
+                       reg.m_endPos - reg.m_startPos,
+                       newLink);
+    }
+
+    proDlg.setValue(regs.size());
+}
+
+void VMdEditor::initAttachmentMenu(QMenu *p_menu)
+{
+    if (m_file->getType() != FileType::Note) {
+        return;
+    }
+
+    const VNoteFile *note = static_cast<const VNoteFile *>((VFile *)m_file);
+    const QVector<VAttachment> &attas = note->getAttachments();
+    if (attas.isEmpty()) {
+        return;
+    }
+
+    QMenu *subMenu = new QMenu(tr("Link To Attachment"), p_menu);
+    for (auto const & att : attas) {
+        QAction *act = new QAction(att.m_name, subMenu);
+        act->setData(att.m_name);
+        subMenu->addAction(act);
+    }
+
+    connect(subMenu, &QMenu::triggered,
+            this, &VMdEditor::handleLinkToAttachmentAction);
+
+    p_menu->addSeparator();
+    p_menu->addMenu(subMenu);
+}
+
+void VMdEditor::handleLinkToAttachmentAction(QAction *p_act)
+{
+    Q_ASSERT(m_file->getType() == FileType::Note);
+    VNoteFile *note = static_cast<VNoteFile *>((VFile *)m_file);
+    QString name = p_act->data().toString();
+    QString folderPath = note->fetchAttachmentFolderPath();
+    QString filePath = QDir(folderPath).filePath(name);
+
+    QDir dir(note->fetchBasePath());
+    QString ut = dir.relativeFilePath(filePath);
+    ut = QUrl(ut).toString(QUrl::EncodeSpaces);
+
+    VInsertLinkDialog ld(QObject::tr("Insert Link"),
+                         "",
+                         "",
+                         name,
+                         ut,
+                         false,
+                         this);
+    if (ld.exec() == QDialog::Accepted) {
+        QString linkText = ld.getLinkText();
+        QString linkUrl = ld.getLinkUrl();
+        Q_ASSERT(!linkText.isEmpty() && !linkUrl.isEmpty());
+        m_editOps->insertLink(linkText, linkUrl);
+    }
 }

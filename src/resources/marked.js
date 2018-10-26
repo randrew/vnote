@@ -50,6 +50,8 @@ var updateText = function(text) {
         text = "[TOC]\n\n" + text;
     }
 
+    startFreshRender();
+
     // There is at least one async job for MathJax.
     asyncJobsCount = 1;
 
@@ -59,10 +61,10 @@ var updateText = function(text) {
     handleToc(needToc);
     insertImageCaption();
     setupImageView();
-    renderMermaid('lang-mermaid');
-    renderFlowchart(['lang-flowchart', 'lang-flow']);
-    renderPlantUML('lang-puml');
-    renderGraphviz('lang-dot');
+    renderMermaid('language-mermaid');
+    renderFlowchart(['language-flowchart', 'language-flow']);
+    renderPlantUML('language-puml');
+    renderGraphviz('language-dot');
     addClassToCodeBlock();
     renderCodeBlockLineNumber();
 

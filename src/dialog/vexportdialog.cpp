@@ -372,11 +372,16 @@ QWidget *VExportDialog::setupHTMLAdvancedSettings()
                 m_completeHTMLCB->setEnabled(!checked);
             });
 
-    QFormLayout *advLayout = new QFormLayout();
-    advLayout->addRow(m_embedStyleCB);
-    advLayout->addRow(m_completeHTMLCB);
-    advLayout->addRow(m_embedImagesCB);
-    advLayout->addRow(m_mimeHTMLCB);
+    // Outline panel.
+    m_outlinePanelCB = new QCheckBox(tr("Enable outline panel"), this);
+    m_outlinePanelCB->setToolTip(tr("Add an outline panel in HTML file"));
+
+    QGridLayout *advLayout = new QGridLayout();
+    advLayout->addWidget(m_embedStyleCB, 0, 1, 1, 2);
+    advLayout->addWidget(m_completeHTMLCB, 0, 4, 1, 2);
+    advLayout->addWidget(m_embedImagesCB, 1, 1, 1, 2);
+    advLayout->addWidget(m_mimeHTMLCB, 1, 4, 1, 2);
+    advLayout->addWidget(m_outlinePanelCB, 2, 1, 1, 2);
 
     advLayout->setContentsMargins(0, 0, 0, 0);
 
@@ -483,6 +488,8 @@ void VExportDialog::initUIFields(MarkdownConverterType p_renderer)
 
     m_mimeHTMLCB->setChecked(s_opt.m_htmlOpt.m_mimeHTML);
 
+    m_outlinePanelCB->setChecked(s_opt.m_htmlOpt.m_outlinePanel);
+
     m_tableOfContentsCB->setChecked(s_opt.m_pdfOpt.m_enableTableOfContents);
 
     m_wkhtmltopdfCB->setChecked(s_opt.m_pdfOpt.m_wkhtmltopdf);
@@ -587,7 +594,8 @@ void VExportDialog::startExport()
                          ExportHTMLOption(m_embedStyleCB->isChecked(),
                                           m_completeHTMLCB->isChecked(),
                                           m_embedImagesCB->isChecked(),
-                                          m_mimeHTMLCB->isChecked()),
+                                          m_mimeHTMLCB->isChecked(),
+                                          m_outlinePanelCB->isChecked()),
                          ExportCustomOption((ExportCustomOption::SourceFormat)
                                             m_customSrcFormatCB->currentData().toInt(),
                                             m_customSuffixEdit->text(),
@@ -1026,8 +1034,8 @@ int VExportDialog::doExportMarkdown(VFile *p_file,
         if (!attaFolder.isEmpty()) {
             QString attaFolderPath;
             attaFolderPath = noteFile->fetchAttachmentFolderPath();
-            attaFolder = VUtils::getDirNameWithSequence(outputPath, attaFolder);
-            QString folderPath = QDir(outputPath).filePath(attaFolder);
+            QString relativePath = QDir(noteFile->fetchBasePath()).relativeFilePath(attaFolderPath);
+            QString folderPath = QDir(outputPath).filePath(relativePath);
 
             // Copy attaFolder to folderPath.
             if (!VUtils::copyDirectory(attaFolderPath, folderPath, false)) {
@@ -1244,6 +1252,10 @@ void VExportDialog::handleCurrentFormatChanged(int p_index)
 
     m_wkTitleEdit->setEnabled(pdfTitleNameEnabled);
     m_wkTargetFileNameEdit->setEnabled(pdfTitleNameEnabled);
+
+    QTimer::singleShot(100, [this]() {
+                resize(size().width(), minimumSizeHint().height());
+            });
 }
 
 void VExportDialog::handleCurrentSrcChanged(int p_index)

@@ -20,11 +20,6 @@ extern VMainWindow *g_mainWin;
 extern VConfigManager *g_config;
 extern VNote *g_vnote;
 
-const QString VDirectoryTree::c_infoShortcutSequence = "F2";
-const QString VDirectoryTree::c_copyShortcutSequence = "Ctrl+C";
-const QString VDirectoryTree::c_cutShortcutSequence = "Ctrl+X";
-const QString VDirectoryTree::c_pasteShortcutSequence = "Ctrl+V";
-
 VDirectoryTree::VDirectoryTree(QWidget *parent)
     : VTreeWidget(parent),
       VNavigationMode(),
@@ -34,6 +29,9 @@ VDirectoryTree::VDirectoryTree(QWidget *parent)
     setHeaderHidden(true);
     setContextMenuPolicy(Qt::CustomContextMenu);
     setFitContent(true);
+
+    viewport()->setAcceptDrops(true);
+    setDropIndicatorShown(true);
 
     initShortcuts();
 
@@ -49,28 +47,28 @@ VDirectoryTree::VDirectoryTree(QWidget *parent)
 
 void VDirectoryTree::initShortcuts()
 {
-    QShortcut *infoShortcut = new QShortcut(QKeySequence(c_infoShortcutSequence), this);
+    QShortcut *infoShortcut = new QShortcut(QKeySequence(Shortcut::c_info), this);
     infoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(infoShortcut, &QShortcut::activated,
             this, [this](){
                 editDirectoryInfo();
             });
 
-    QShortcut *copyShortcut = new QShortcut(QKeySequence(c_copyShortcutSequence), this);
+    QShortcut *copyShortcut = new QShortcut(QKeySequence(Shortcut::c_copy), this);
     copyShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(copyShortcut, &QShortcut::activated,
             this, [this](){
                 copySelectedDirectories();
             });
 
-    QShortcut *cutShortcut = new QShortcut(QKeySequence(c_cutShortcutSequence), this);
+    QShortcut *cutShortcut = new QShortcut(QKeySequence(Shortcut::c_cut), this);
     cutShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(cutShortcut, &QShortcut::activated,
             this, [this](){
                 cutSelectedDirectories();
             });
 
-    QShortcut *pasteShortcut = new QShortcut(QKeySequence(c_pasteShortcutSequence), this);
+    QShortcut *pasteShortcut = new QShortcut(QKeySequence(Shortcut::c_paste), this);
     pasteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(pasteShortcut, &QShortcut::activated,
             this, [this](){
@@ -389,7 +387,7 @@ void VDirectoryTree::contextMenuRequested(QPoint pos)
         menu.addAction(deleteDirAct);
 
         QAction *copyAct = new QAction(VIconUtils::menuIcon(":/resources/icons/copy.svg"),
-                                       tr("&Copy\t%1").arg(VUtils::getShortcutText(c_copyShortcutSequence)),
+                                       tr("&Copy\t%1").arg(VUtils::getShortcutText(Shortcut::c_copy)),
                                        &menu);
         copyAct->setToolTip(tr("Copy selected folders"));
         connect(copyAct, &QAction::triggered,
@@ -397,7 +395,7 @@ void VDirectoryTree::contextMenuRequested(QPoint pos)
         menu.addAction(copyAct);
 
         QAction *cutAct = new QAction(VIconUtils::menuIcon(":/resources/icons/cut.svg"),
-                                      tr("C&ut\t%1").arg(VUtils::getShortcutText(c_cutShortcutSequence)),
+                                      tr("C&ut\t%1").arg(VUtils::getShortcutText(Shortcut::c_cut)),
                                       &menu);
         cutAct->setToolTip(tr("Cut selected folders"));
         connect(cutAct, &QAction::triggered,
@@ -411,7 +409,7 @@ void VDirectoryTree::contextMenuRequested(QPoint pos)
         }
 
         QAction *pasteAct = new QAction(VIconUtils::menuIcon(":/resources/icons/paste.svg"),
-                                        tr("&Paste\t%1").arg(VUtils::getShortcutText(c_pasteShortcutSequence)),
+                                        tr("&Paste\t%1").arg(VUtils::getShortcutText(Shortcut::c_paste)),
                                         &menu);
         pasteAct->setToolTip(tr("Paste folders in this folder"));
         connect(pasteAct, &QAction::triggered,
@@ -445,7 +443,7 @@ void VDirectoryTree::contextMenuRequested(QPoint pos)
         menu.addAction(pinToHistoryAct);
 
         QAction *dirInfoAct = new QAction(VIconUtils::menuIcon(":/resources/icons/dir_info.svg"),
-                                          tr("&Info (Rename)\t%1").arg(VUtils::getShortcutText(c_infoShortcutSequence)),
+                                          tr("&Info (Rename)\t%1").arg(VUtils::getShortcutText(Shortcut::c_info)),
                                           &menu);
         dirInfoAct->setToolTip(tr("View and edit current folder's information"));
         connect(dirInfoAct, &QAction::triggered,
@@ -1233,4 +1231,70 @@ void VDirectoryTree::pinDirectoryToHistory()
     V_ASSERT(curItem);
     g_mainWin->getHistoryList()->pinFolder(getVDirectory(curItem)->fetchPath());
     g_mainWin->showStatusMessage(tr("1 folder pinned to History"));
+}
+
+Qt::DropActions VDirectoryTree::supportedDropActions() const
+{
+    return Qt::CopyAction | Qt::MoveAction;
+}
+
+bool VDirectoryTree::dropMimeData(QTreeWidgetItem *p_parent,
+                                  int p_index,
+                                  const QMimeData *p_data,
+                                  Qt::DropAction p_action)
+{
+    Q_UNUSED(p_index);
+
+    if (p_data->hasFormat(ClipboardConfig::c_format)) {
+        VDirectory *dir = getVDirectory(p_parent);
+        if (!dir) {
+            return false;
+        }
+
+        QByteArray ba = p_data->data(ClipboardConfig::c_format);
+        QJsonObject obj = QJsonDocument::fromJson(ba).object();
+        if (obj.isEmpty()) {
+            return false;
+        }
+
+        if (obj[ClipboardConfig::c_type] != (int)ClipboardOpType::CopyFile) {
+            return false;
+        }
+
+        QJsonArray files = obj[ClipboardConfig::c_files].toArray();
+        if (files.isEmpty()) {
+            return false;
+        }
+
+        QVector<QString> filesToPaste;
+        for (auto const & file : files) {
+            filesToPaste.append(file.toString());
+        }
+
+        qDebug() << "paste files from dropped mime data" << dir->getName() << filesToPaste;
+        g_mainWin->getFileList()->pasteFiles(dir, filesToPaste, p_action == Qt::MoveAction);
+        return true;
+    }
+
+    return false;
+}
+
+void VDirectoryTree::dropEvent(QDropEvent *p_event)
+{
+    // Distinguish copy and cut.
+    int modifiers = p_event->keyboardModifiers();
+    if (modifiers & Qt::ControlModifier) {
+        p_event->setDropAction(Qt::CopyAction);
+    } else {
+        // Cut.
+        // Will pass to dropMimeData().
+        p_event->setDropAction(Qt::MoveAction);
+    }
+
+    QTreeWidget::dropEvent(p_event);
+}
+
+QStringList VDirectoryTree::mimeTypes() const
+{
+    return QStringList(ClipboardConfig::c_format);
 }

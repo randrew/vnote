@@ -31,28 +31,32 @@
 #include <QFontDatabase>
 #include <QSvgRenderer>
 #include <QPainter>
+#include <QTemporaryFile>
 
 #include "vorphanfile.h"
 #include "vnote.h"
 #include "vnotebook.h"
 #include "vpreviewpage.h"
 #include "pegparser.h"
+#include "widgets/vcombobox.h"
 
 extern VConfigManager *g_config;
 
 QVector<QPair<QString, QString>> VUtils::s_availableLanguages;
 
-const QString VUtils::c_imageLinkRegExp = QString("\\!\\[([^\\]]*)\\]\\(\\s*([^\\)\"'\\s]+)\\s*"
-                                                  "((\"[^\"\\)\\n]*\")|('[^'\\)\\n]*'))?\\s*"
-                                                  "(=(\\d*)x(\\d*))?\\s*"
-                                                  "\\)");
+const QString VUtils::c_imageLinkRegExp = QString("\\!\\[([^\\[\\]]*)\\]"
+                                                  "\\(\\s*"
+                                                  "([^\\)\"'\\s]+)"
+                                                  "(\\s*(\"[^\"\\)\\n\\r]*\")|('[^'\\)\\n\\r]*'))?"
+                                                  "(\\s*=(\\d*)x(\\d*))?"
+                                                  "\\s*\\)");
 
 const QString VUtils::c_imageTitleRegExp = QString("[^\\[\\]]*");
 
 const QString VUtils::c_linkRegExp = QString("\\[([^\\]]*)\\]"
                                              "\\(\\s*(\\S+)"
-                                             "(?:\\s+((\"[^\"\\n]*\")"
-                                                     "|('[^'\\n]*')))?\\s*"
+                                             "(?:\\s+((\"[^\"\\n\\r]*\")"
+                                                     "|('[^'\\n\\r]*')))?\\s*"
                                              "\\)");
 
 const QString VUtils::c_fileNameRegExp = QString("(?:[^\\\\/:\\*\\?\"<>\\|\\s]| )*");
@@ -155,33 +159,32 @@ QString VUtils::generateImageFileName(const QString &path,
                                       const QString &title,
                                       const QString &format)
 {
-    QRegExp regExp("\\W");
-    QString baseName(title.toLower());
+    Q_UNUSED(title);
 
-    // Remove non-character chars.
-    baseName.remove(regExp);
+    const QChar sep('_');
 
-    // Constrain the length of the name.
-    baseName.truncate(10);
-
-    baseName.prepend(g_config->getImageNamePrefix());
-
-    if (!baseName.isEmpty()) {
-        baseName.append('_');
+    QString baseName(g_config->getImageNamePrefix());
+    if (!baseName.isEmpty()
+        && !(baseName.size() == 1 && baseName[0] == sep)) {
+        baseName += sep;
     }
 
-    // Add current time and random number to make the name be most likely unique
-    baseName += QString::number(QDateTime::currentDateTime().toTime_t())
-                + '_'
-                + QString::number(qrand());
+    // Add current time at fixed length.
+    baseName += QDateTime::currentDateTime().toString("yyyyMMddHHmmsszzz");
 
-    QDir dir(path);
-    QString imageName = baseName + "." + format.toLower();
+    // Add random number to make the name be most likely unique.
+    baseName += (sep + QString::number(qrand()));
+
+    QString suffix;
+    if (!format.isEmpty()) {
+        suffix = "." + format.toLower();
+    }
+
+    QString imageName(baseName + suffix);
     int index = 1;
-
+    QDir dir(path);
     while (fileExists(dir, imageName, true)) {
-        imageName = QString("%1_%2.%3").arg(baseName).arg(index++)
-                                       .arg(format.toLower());
+        imageName = QString("%1_%2%3").arg(baseName).arg(index++).arg(suffix);
     }
 
     return imageName;
@@ -244,7 +247,7 @@ QVector<ImageLink> VUtils::fetchImagesFromMarkdownFile(VFile *p_file,
 
         ImageLink link;
         link.m_url = imageUrl;
-        QFileInfo info(basePath, imageUrl);
+        QFileInfo info(basePath, purifyUrl(imageUrl));
         if (info.exists()) {
             if (info.isNativePath()) {
                 // Local file.
@@ -285,7 +288,7 @@ QVector<ImageLink> VUtils::fetchImagesFromMarkdownFile(VFile *p_file,
 QString VUtils::linkUrlToPath(const QString &p_basePath, const QString &p_url)
 {
     QString fullPath;
-    QFileInfo info(p_basePath, p_url);
+    QFileInfo info(p_basePath, purifyUrl(p_url));
     if (info.exists()) {
         if (info.isNativePath()) {
             // Local file.
@@ -566,7 +569,7 @@ bool VUtils::isImageURL(const QUrl &p_url)
 
 bool VUtils::isImageURLText(const QString &p_url)
 {
-    QFileInfo info(p_url);
+    QFileInfo info(purifyUrl(p_url));
     return QImageReader::supportedImageFormats().contains(info.suffix().toLower().toLatin1());
 }
 
@@ -790,6 +793,11 @@ QString VUtils::generateHtmlTemplate(const QString &p_template,
                                                     "processClass: \"tex2jax_process|language-mathjax|lang-mathjax\"},\n"
                      "                    showProcessingMessages: false,\n"
                      "                    skipStartupTypeset: " + QString("%1,\n").arg(mathjaxTypeSetOnLoad ? "false" : "true") +
+                     "                    TeX: {\n"
+                     "                          Macros: {\n"
+                     "                              bm: [\"\\\\boldsymbol{#1}\", 1]\n"
+                     "                          }\n"
+                     "                    },\n"
                      "                    messageStyle: \"none\"});\n"
                      "MathJax.Hub.Register.StartupHook(\"End\", function() { handleMathjaxReady(); });\n"
                      "</script>\n"
@@ -868,7 +876,9 @@ QString VUtils::generateHtmlTemplate(const QString &p_template,
     return htmlTemplate;
 }
 
-QString VUtils::generateExportHtmlTemplate(const QString &p_renderBg, bool p_includeMathJax)
+QString VUtils::generateExportHtmlTemplate(const QString &p_renderBg,
+                                           bool p_includeMathJax,
+                                           bool p_outlinePanel)
 {
     QString templ = VNote::generateExportHtmlTemplate(g_config->getRenderBackgroundColor(p_renderBg));
     QString extra;
@@ -890,6 +900,11 @@ with 2em, if there are Chinese characters in it, the font will be a mess.
                                    "}\n"
 #endif
                                  "}\n"
+                             "},\n"
+                             "TeX: {\n"
+                             "    Macros: {\n"
+                             "        bm: [\"\\\\boldsymbol{#1}\", 1]\n"
+                             "    }\n"
                              "}\n"
                          "});\n"
                  "</script>\n";
@@ -900,6 +915,18 @@ with 2em, if there are Chinese characters in it, the font will be a mess.
         mj.replace(reg, QString("\\1%1").arg("TeX-MML-AM_SVG"));
 
         extra += "<script type=\"text/javascript\" async src=\"" + mj + "\"></script>\n";
+    }
+
+    if (p_outlinePanel) {
+        const QString outlineCss(":/resources/export/outline.css");
+        QString css = VUtils::readFileFromDisk(outlineCss);
+        if (!css.isEmpty()) {
+            templ.replace(HtmlHolder::c_outlineStyleHolder, css);
+        }
+
+        const QString outlineJs(":/resources/export/outline.js");
+        QString js = VUtils::readFileFromDisk(outlineJs);
+        extra += QString("<script type=\"text/javascript\">\n%1\n</script>\n").arg(js);
     }
 
     if (!extra.isEmpty()) {
@@ -939,6 +966,11 @@ QString VUtils::generateMathJaxPreviewTemplate()
                  "                                   scale: " + mathjaxScale + "\n"
                  "                                  },\n"
                  "                    showProcessingMessages: false,\n"
+                 "                    TeX: {\n"
+                 "                          Macros: {\n"
+                 "                              bm: [\"\\\\boldsymbol{#1}\", 1]\n"
+                 "                          }\n"
+                 "                    },\n"
                  "                    messageStyle: \"none\"});\n"
                  "</script>\n";
 
@@ -999,11 +1031,12 @@ QString VUtils::getRandomFileName(const QString &p_directory)
 {
     Q_ASSERT(!p_directory.isEmpty());
 
-    QString name;
+    QString baseName(QDateTime::currentDateTime().toString("yyyyMMddHHmmsszzz"));
+
     QDir dir(p_directory);
+    QString name;
     do {
-        name = QString::number(QDateTime::currentDateTimeUtc().toTime_t());
-        name = name + '_' + QString::number(qrand());
+        name = baseName + '_' + QString::number(qrand());
     } while (fileExists(dir, name, true));
 
     return name;
@@ -1362,12 +1395,16 @@ bool VUtils::isMetaKey(int p_key)
     return p_key == Qt::Key_Control
            || p_key == Qt::Key_Shift
            || p_key == Qt::Key_Meta
+#if defined(Q_OS_LINUX)
+           // For mapping Caps as Ctrl in KDE.
+           || p_key == Qt::Key_CapsLock
+#endif
            || p_key == Qt::Key_Alt;
 }
 
 QComboBox *VUtils::getComboBox(QWidget *p_parent)
 {
-    QComboBox *box = new QComboBox(p_parent);
+    QComboBox *box = new VComboBox(p_parent);
     QStyledItemDelegate *itemDelegate = new QStyledItemDelegate(box);
     box->setItemDelegate(itemDelegate);
 
@@ -1381,11 +1418,16 @@ void VUtils::setDynamicProperty(QWidget *p_widget, const char *p_prop, bool p_va
     p_widget->style()->polish(p_widget);
 }
 
-QWebEngineView *VUtils::getWebEngineView(QWidget *p_parent)
+QWebEngineView *VUtils::getWebEngineView(const QColor &p_background, QWidget *p_parent)
 {
     QWebEngineView *viewer = new QWebEngineView(p_parent);
     VPreviewPage *page = new VPreviewPage(viewer);
-    page->setBackgroundColor(Qt::transparent);
+
+    // Setting the background to Qt::transparent will force GrayScale antialiasing.
+    if (p_background.isValid() && p_background != Qt::transparent) {
+        page->setBackgroundColor(p_background);
+    }
+
     viewer->setPage(page);
     viewer->setZoomFactor(g_config->getWebZoomFactor());
 
@@ -1524,28 +1566,6 @@ QStringList VUtils::parseCombinedArgString(const QString &p_program)
     }
 
     return args;
-}
-
-const QTreeWidgetItem *VUtils::topLevelTreeItem(const QTreeWidgetItem *p_item)
-{
-    if (!p_item) {
-        return NULL;
-    }
-
-    if (p_item->parent()) {
-        return topLevelTreeItem(p_item->parent());
-    } else {
-        return p_item;
-    }
-}
-
-int VUtils::childIndexOfTreeItem(const QTreeWidgetItem *p_item)
-{
-    if (p_item->parent()) {
-        return p_item->parent()->indexOfChild(const_cast<QTreeWidgetItem *>(p_item));
-    } else {
-        return 0;
-    }
 }
 
 QImage VUtils::imageFromFile(const QString &p_filePath)
@@ -1800,4 +1820,41 @@ QString VUtils::parentDirName(const QString &p_path)
     }
 
     return QFileInfo(p_path).dir().dirName();
+}
+
+QString VUtils::purifyUrl(const QString &p_url)
+{
+    int idx = p_url.indexOf('?');
+    if (idx > -1) {
+        return p_url.left(idx);
+    }
+
+    return p_url;
+}
+
+// Suffix size for QTemporaryFile.
+#define MAX_SIZE_SUFFIX_FOR_TEMP_FILE 10
+
+QTemporaryFile *VUtils::createTemporaryFile(QString p_suffix)
+{
+    if (p_suffix.size() > MAX_SIZE_SUFFIX_FOR_TEMP_FILE) {
+        p_suffix.clear();
+    }
+
+    QString xx = p_suffix.isEmpty() ? "XXXXXX" : "XXXXXX.";
+    return new QTemporaryFile(QDir::tempPath()
+                              + QDir::separator()
+                              + xx
+                              + p_suffix);
+}
+
+QString VUtils::purifyImageTitle(QString p_title)
+{
+    return p_title.remove(QRegExp("[\\r\\n\\[\\]]"));
+}
+
+QString VUtils::escapeHtml(QString p_text)
+{
+    p_text.replace(">", "&gt;").replace("<", "&lt;").replace("&", "&amp;");
+    return p_text;
 }

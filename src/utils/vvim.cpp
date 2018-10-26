@@ -528,7 +528,21 @@ static bool joinLines(QTextCursor &p_cursor,
 
 bool VVim::handleKeyPressEvent(QKeyEvent *p_event, int *p_autoIndentPos)
 {
-    bool ret = handleKeyPressEvent(p_event->key(), p_event->modifiers(), p_autoIndentPos);
+    int modifiers = p_event->modifiers();
+    QString keyText = p_event->text();
+    if (keyText.size() == 1) {
+        if (keyText[0].isUpper()) {
+            // Upper case.
+            modifiers |= Qt::ShiftModifier;
+        } else if (keyText[0].isLower()) {
+            // Lower case.
+            if (modifiers & Qt::ShiftModifier) {
+                modifiers &= ~Qt::ShiftModifier;
+            }
+        }
+    }
+
+    bool ret = handleKeyPressEvent(p_event->key(), modifiers, p_autoIndentPos);
     if (ret) {
         p_event->accept();
     }
@@ -571,11 +585,7 @@ bool VVim::handleKeyPressEvent(int key, int modifiers, int *p_autoIndentPos)
 
         if (m_registerPending) {
             // Ctrl and Shift may be sent out first.
-            if (key == Qt::Key_Control
-                || key == Qt::Key_Shift
-                || key == Qt::Key_Meta
-                // For mapping Caps as Ctrl in KDE.
-                || key == Qt::Key_CapsLock) {
+            if (VUtils::isMetaKey(key)) {
                 goto accept;
             }
 
@@ -607,7 +617,7 @@ bool VVim::handleKeyPressEvent(int key, int modifiers, int *p_autoIndentPos)
     }
 
     // Ctrl and Shift may be sent out first.
-    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Meta) {
+    if (isKeyShouldBeIgnored(key)) {
         goto accept;
     }
 
@@ -6472,4 +6482,13 @@ void VVim::clearSelectionAndEnterNormalMode()
     }
 
     setMode(VimMode::Normal, true, position);
+}
+
+bool VVim::isKeyShouldBeIgnored(int p_key) const
+{
+    if (VUtils::isMetaKey(p_key)) {
+        return true;
+    }
+
+    return false;
 }

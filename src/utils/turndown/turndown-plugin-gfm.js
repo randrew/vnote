@@ -44,6 +44,7 @@ var configs = { autoHead: false };
 rules.tableCell = {
   filter: ['th', 'td'],
   replacement: function (content, node) {
+    content = content.replace(/[\r\n]/g, '');
     return cell(content, node)
   }
 };
@@ -90,7 +91,7 @@ rules.tableRow = {
 };
 
 rules.table = {
-  // Only convert tables with a heading row.
+  // If configs.autoHead is false, only convert tables with a heading row.
   // Tables with no heading row are kept using `keep` (see below).
   filter: function (node) {
     return node.nodeName === 'TABLE'
@@ -142,7 +143,9 @@ function isFirstTbody (element) {
       (
         previousSibling.nodeName === 'THEAD' &&
         /^\s*$/i.test(previousSibling.textContent)
-      )
+      ) ||
+      // For parsting table from Microsoft Excel.
+      previousSibling.nodeName == 'COLGROUP'
     )
   )
 }

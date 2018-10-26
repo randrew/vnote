@@ -45,7 +45,16 @@ VMdTab::VMdTab(VFile *p_file, VEditArea *p_editArea,
 {
     V_ASSERT(m_file->getDocType() == DocType::Markdown);
 
-    m_file->open();
+    if (!m_file->open()) {
+        VUtils::showMessage(QMessageBox::Warning,
+                            tr("Warning"),
+                            tr("Fail to open note <span style=\"%1\">%2</span>.")
+                              .arg(g_config->c_dataTextStyle).arg(m_file->getName()),
+                            tr("Please check if file %1 exists.").arg(m_file->fetchPath()),
+                            QMessageBox::Ok,
+                            QMessageBox::Ok,
+                            this);
+    }
 
     HeadingSequenceType headingSequenceType = g_config->getHeadingSequenceType();
     if (headingSequenceType == HeadingSequenceType::Enabled) {
@@ -441,7 +450,8 @@ void VMdTab::setupMarkdownViewer()
             this, &VMdTab::statusMessage);
 
     // Avoid white flash before loading content.
-    page->setBackgroundColor(Qt::transparent);
+    // Setting Qt::transparent will force GrayScale antialias rendering.
+    page->setBackgroundColor(g_config->getBaseBackground());
 
     m_document = new VDocument(m_file, m_webViewer);
     m_documentID = m_document->registerIdentifier();

@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QSslSocket>
 #include <QOpenGLContext>
+#include <QProcess>
 
 #include "utils/vutils.h"
 #include "vsingleinstanceguard.h"
@@ -129,6 +130,8 @@ int main(int argc, char *argv[])
     // Set openGL version.
     // Or set environment QT_OPENGL to "angle/desktop/software".
     // QCoreApplication::setAttribute(Qt::AA_UseOpenGLES, true);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 
     QApplication app(argc, argv);
 
@@ -231,7 +234,17 @@ int main(int argc, char *argv[])
 
     w.show();
 
+    g_config->setBaseBackground(w.palette().color(QPalette::Window));
+
     w.kickOffStartUpTimer(filePaths);
 
-    return app.exec();
+    int ret = app.exec();
+    if (ret == RESTART_EXIT_CODE) {
+        // Ask to restart VNote.
+        guard.exit();
+        QProcess::startDetached(qApp->applicationFilePath(), QStringList());
+        return 0;
+    }
+
+    return ret;
 }

@@ -8,6 +8,7 @@
 #include "vfilelist.h"
 #include "vnavigationmode.h"
 #include "vconfigmanager.h"
+#include "utils/vkeyboardlayoutmanager.h"
 
 extern VConfigManager *g_config;
 
@@ -95,12 +96,8 @@ void VCaptain::keyPressEvent(QKeyEvent *p_event)
         return;
     }
 
-    if (g_config->getMultipleKeyboardLayout()) {
-        qDebug() << "Captain mode" << key << p_event->nativeScanCode() << p_event->nativeVirtualKey();
-        key = p_event->nativeVirtualKey();
-    }
+    key = VKeyboardLayoutManager::mapKey(key);
 
-    // Use virtual key here for different layout.
     if (handleKeyPress(key, modifiers)) {
         p_event->accept();
     } else {

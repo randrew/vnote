@@ -140,6 +140,12 @@ void VTextDocumentLayout::blockRangeFromRectBS(const QRectF &p_rect,
     p_last = document()->blockCount() - 1;
     while (block.isValid()) {
         const BlockLayoutInfo *tinfo = VTextBlockData::layoutInfo(block);
+        if (!tinfo->hasOffset()) {
+            qWarning() << "block without offset"
+                       << block.blockNumber() << tinfo->m_offset
+                       << tinfo->m_rect << tinfo->m_rect.isNull();
+        }
+
         V_ASSERT(tinfo->hasOffset());
 
         if (tinfo->bottom() > y) {
@@ -557,7 +563,7 @@ void VTextDocumentLayout::updateOffsetBefore(const QTextBlock &p_block)
             blk = blk.next();
             while (blk.isValid() && blk.blockNumber() <= blockNum) {
                 BlockLayoutInfo *ninfo = VTextBlockData::layoutInfo(blk);
-                Q_ASSERT(!ninfo->isNull());
+                V_ASSERT(!ninfo->isNull());
                 ninfo->m_offset = offset;
                 offset = ninfo->bottom();
                 blk = blk.next();
@@ -570,6 +576,8 @@ void VTextDocumentLayout::updateOffsetBefore(const QTextBlock &p_block)
     }
 }
 
+// NOTICE: It will skip non-layouted or offset-non-changed blocks.
+// So if you relayout separated blocks, you need to updateOffsetAfter() for each of them.
 void VTextDocumentLayout::updateOffsetAfter(const QTextBlock &p_block)
 {
     BlockLayoutInfo *info = VTextBlockData::layoutInfo(p_block);
@@ -975,28 +983,31 @@ void VTextDocumentLayout::relayout(const OrderedIntSet &p_blocks)
     QTextDocument *doc = document();
 
     // Need to relayout and update blocks in ascending order.
-    QTextBlock startBlock;
+    QVector<QTextBlock> blocks;
+    blocks.reserve(p_blocks.size());
     for (auto bn = p_blocks.keyBegin(); bn != p_blocks.keyEnd(); ++bn) {
         QTextBlock block = doc->findBlockByNumber(*bn);
         if (block.isValid()) {
-            if (!startBlock.isValid()) {
-                startBlock = block;
-            }
-
+            blocks.append(block);
             clearBlockLayout(block);
             layoutBlock(block);
         }
     }
 
-    if (!startBlock.isValid()) {
+    if (blocks.isEmpty()) {
         return;
     }
 
-    updateOffset(startBlock);
+    // Need to update offset for each of these discontinuous blocks, because
+    // the offset of the non-touched blocks may be the same but there are still
+    // touched blocks after them.
+    for (auto & blk : blocks) {
+        updateOffset(blk);
+    }
 
     updateDocumentSize();
 
-    qreal offset = VTextBlockData::layoutInfo(startBlock)->m_offset;
+    qreal offset = VTextBlockData::layoutInfo(blocks.first())->m_offset;
     emit update(QRectF(0., offset, 1000000000., 1000000000.));
 }
 

@@ -356,8 +356,8 @@ void VMainWindow::setupNotebookPanel()
     m_nbSplitter->setObjectName("NotebookSplitter");
     m_nbSplitter->addWidget(naviWidget);
     m_nbSplitter->addWidget(m_fileList);
-    m_nbSplitter->setStretchFactor(0, 0);
-    m_nbSplitter->setStretchFactor(1, 1);
+    m_nbSplitter->setStretchFactor(0, 1);
+    m_nbSplitter->setStretchFactor(1, 2);
 
     connect(m_notebookSelector, &VNotebookSelector::curNotebookChanged,
             this, [this](VNotebook *p_notebook) {
@@ -808,7 +808,7 @@ void VMainWindow::initHelpMenu()
     connect(mdGuideAct, &QAction::triggered,
             this, [this](){
                 QString docFile = VUtils::getDocFile(VNote::c_markdownGuideDocFile);
-                VFile *file = vnote->getOrphanFile(docFile, false, true);
+                VFile *file = vnote->getFile(docFile, true);
                 m_editArea->openFile(file, OpenFileMode::Read);
             });
 
@@ -1096,6 +1096,12 @@ void VMainWindow::initFileMenu()
     fileMenu->addAction(customShortcutAct);
 
     fileMenu->addSeparator();
+
+    // Restart.
+    QAction *restartAct = new QAction(tr("Restart"), this);
+    connect(restartAct, &QAction::triggered,
+            this, &VMainWindow::restartVNote);
+    fileMenu->addAction(restartAct);
 
     // Exit.
     QAction *exitAct = new QAction(tr("&Quit"), this);
@@ -1442,10 +1448,14 @@ void VMainWindow::changeMarkdownConverter(QAction *action)
 
 void VMainWindow::aboutMessage()
 {
-    QString info = tr("<span style=\"font-weight: bold;\">v%1</span>").arg(VConfigManager::c_version);
-    info += "<br/><br/>";
-    info += tr("VNote is a free Vim-inspired note-taking application that knows programmers and Markdown better.");
+    QString info = tr("VNote");
     info += "<br/>";
+    info += tr("Version: %1").arg(VConfigManager::c_version);
+    info += "<br/>";
+    info += tr("Author: Le Tan (tamlok)");
+    info += "<br/><br/>";
+    info += tr("VNote is a free and open source Vim-inspired note-taking application that knows programmers and Markdown better.");
+    info += "<br/><br/>";
     info += tr("Please visit <a href=\"https://github.com/tamlok/vnote.git\">Github</a> for more information.");
     QMessageBox::about(this, tr("About VNote"), info);
 }
@@ -2224,8 +2234,8 @@ void VMainWindow::saveStateAndGeometry()
     g_config->setMainWindowState(saveState());
     g_config->setToolsDockChecked(m_toolDock->isVisible());
     g_config->setSearchDockChecked(m_searchDock->isVisible());
-    g_config->setNotebookSplitterState(m_nbSplitter->saveState());
     g_config->setMainSplitterState(m_mainSplitter->saveState());
+    g_config->setNotebookSplitterState(m_nbSplitter->saveState());
     m_tagExplorer->saveStateAndGeometry();
     g_config->setNaviBoxCurrentIndex(m_naviBox->currentIndex());
 }
@@ -2448,7 +2458,7 @@ void VMainWindow::enableImageCaption(bool p_checked)
 void VMainWindow::shortcutsHelp()
 {
     QString docFile = VUtils::getDocFile(VNote::c_shortcutsDocFile);
-    VFile *file = vnote->getOrphanFile(docFile, false, true);
+    VFile *file = vnote->getFile(docFile, true);
     m_editArea->openFile(file, OpenFileMode::Read);
 }
 
@@ -2567,14 +2577,7 @@ QVector<VFile *> VMainWindow::openFiles(const QStringList &p_files,
             continue;
         }
 
-        VFile *file = NULL;
-        if (!p_forceOrphan) {
-            file = vnote->getInternalFile(p_files[i]);
-        }
-
-        if (!file) {
-            file = vnote->getOrphanFile(p_files[i], true);
-        }
+        VFile *file = vnote->getFile(p_files[i], p_forceOrphan);
 
         m_editArea->openFile(file, p_mode, p_forceMode);
         vfiles.append(file);
@@ -2627,7 +2630,13 @@ void VMainWindow::initTrayIcon()
     connect(exitAct, &QAction::triggered,
             this, &VMainWindow::quitApp);
 
-    m_trayIcon = new QSystemTrayIcon(QIcon(":/resources/icons/32x32/vnote.png"), this);
+    QIcon sysIcon(":/resources/icons/256x256/vnote.png");
+
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    sysIcon.setIsMask(true);
+#endif
+
+    m_trayIcon = new QSystemTrayIcon(sysIcon, this);
     m_trayIcon->setToolTip(tr("VNote"));
     m_trayIcon->setContextMenu(menu);
 
@@ -2889,7 +2898,7 @@ void VMainWindow::openQuickAccess()
     const QString &qaPath = g_config->getQuickAccess();
     if (qaPath.isEmpty()) {
         VUtils::showMessage(QMessageBox::Information,
-                            tr("Info"),
+                            tr("Information"),
                             tr("Quick Access is not set."),
                             tr("Please specify the note for Quick Access in the settings dialog "
                                "or the context menu of a note."),
@@ -3330,6 +3339,11 @@ void VMainWindow::kickOffStartUpTimer(const QStringList &p_files)
         QCoreApplication::sendPostedEvents();
         openStartupPages();
         openFiles(p_files, false, g_config->getNoteOpenMode(), false, true);
+        if (g_config->versionChanged()) {
+            QString docFile = VUtils::getDocFile("welcome.md");
+            VFile *file = vnote->getFile(docFile, true);
+            m_editArea->openFile(file, OpenFileMode::Read);
+        }
     });
 }
 
@@ -3389,4 +3403,9 @@ void VMainWindow::initUpdateTimer()
                 m_editToolBar->update();
                 m_noteToolBar->update();
             });
+}
+
+void VMainWindow::restartVNote()
+{
+    QCoreApplication::exit(RESTART_EXIT_CODE);
 }

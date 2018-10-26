@@ -17,7 +17,7 @@ const QString VConfigManager::orgName = QString("vnote");
 
 const QString VConfigManager::appName = QString("vnote");
 
-const QString VConfigManager::c_version = QString("1.22");
+const QString VConfigManager::c_version = QString("2.0");
 
 const QString VConfigManager::c_dirConfigFile = QString("_vnote.json");
 
@@ -29,6 +29,8 @@ const QString VConfigManager::c_sessionConfigFile = QString("session.ini");
 
 const QString VConfigManager::c_snippetConfigFile = QString("snippet.json");
 
+const QString VConfigManager::c_keyboardLayoutConfigFile = QString("keyboard_layouts.ini");
+
 const QString VConfigManager::c_styleConfigFolder = QString("styles");
 
 const QString VConfigManager::c_themeConfigFolder = QString("themes");
@@ -38,6 +40,8 @@ const QString VConfigManager::c_codeBlockStyleConfigFolder = QString("codeblock_
 const QString VConfigManager::c_templateConfigFolder = QString("templates");
 
 const QString VConfigManager::c_snippetConfigFolder = QString("snippets");
+
+const QString VConfigManager::c_resourceConfigFolder = QString("resources");
 
 const QString VConfigManager::c_warningTextStyle = QString("color: #C9302C; font: bold");
 
@@ -61,6 +65,8 @@ VConfigManager::VConfigManager(QObject *p_parent)
 void VConfigManager::initialize()
 {
     initSettings();
+
+    checkVersion();
 
     initThemes();
 
@@ -314,9 +320,6 @@ void VConfigManager::initialize()
     m_smartLivePreview = getConfigFromSettings("global",
                                                "smart_live_preview").toInt();
 
-    m_multipleKeyboardLayout = getConfigFromSettings("global",
-                                                     "multiple_keyboard_layout").toBool();
-
     m_insertNewNoteInFront = getConfigFromSettings("global",
                                                    "insert_new_note_in_front").toBool();
 
@@ -357,6 +360,7 @@ void VConfigManager::initEditorConfigs()
     m_enableTabHighlight = getConfigFromSettings("editor",
                                                  "enable_tab_highlight").toBool();
 
+    m_parsePasteLocalImage = getConfigFromSettings("editor", "parse_paste_local_image").toBool();
 }
 
 void VConfigManager::initSettings()
@@ -856,6 +860,35 @@ const QString &VConfigManager::getSnippetConfigFilePath() const
 {
     static QString path = QDir(getSnippetConfigFolder()).filePath(c_snippetConfigFile);
     return path;
+}
+
+QString VConfigManager::getResourceConfigFolder() const
+{
+    return QDir(getConfigFolder()).filePath(c_resourceConfigFolder);
+}
+
+const QString &VConfigManager::getCommonCssUrl() const
+{
+    static QString cssPath;
+    if (cssPath.isEmpty()) {
+        cssPath = QDir(getResourceConfigFolder()).filePath("common.css");
+        if (m_versionChanged || !QFileInfo::exists(cssPath)) {
+            // Output the default one.
+            if (!VUtils::copyFile(":/resources/common.css", cssPath, false)) {
+                cssPath = "qrc:/resources/common.css";
+                return cssPath;
+            }
+        }
+
+        cssPath = QUrl::fromLocalFile(cssPath).toString();
+    }
+
+    return cssPath;
+}
+
+const QString VConfigManager::getKeyboardLayoutConfigFilePath() const
+{
+    return QDir(getConfigFolder()).filePath(c_keyboardLayoutConfigFile);
 }
 
 QString VConfigManager::getThemeFile() const
@@ -1632,3 +1665,12 @@ QString VConfigManager::getRenderBackgroundColor(const QString &p_bgName) const
     return QString();
 }
 
+void VConfigManager::checkVersion()
+{
+    const QString key("version");
+    QString ver = getConfigFromSettings("global", key).toString();
+    m_versionChanged = ver != c_version;
+    if (m_versionChanged) {
+        setConfigToSettings("global", key, c_version);
+    }
+}

@@ -105,6 +105,15 @@ void VEditor::init()
 
     m_config.init(QFontMetrics(m_editor->font()), false);
     updateEditConfig();
+
+    // Init shortcuts.
+    QKeySequence keySeq(g_config->getShortcutKeySequence("PastePlainText"));
+    QShortcut *pastePlainTextShortcut = new QShortcut(keySeq, m_editor);
+    pastePlainTextShortcut->setContext(Qt::WidgetShortcut);
+    QObject::connect(pastePlainTextShortcut, &QShortcut::activated,
+                     m_object, [this]() {
+                        pastePlainText();
+                     });
 }
 
 void VEditor::labelTimerTimeout()
@@ -777,7 +786,7 @@ bool VEditor::findText(const VSearchToken &p_token, bool p_forward, bool p_fromS
 
         highlightSearchedWordUnderCursor(tcursor);
 
-        emit m_object->statusMessage(QObject::tr("Match found: %2 of %3")
+        emit m_object->statusMessage(QObject::tr("Match found: %1 of %2")
                                                 .arg(idx + 1)
                                                 .arg(result.size()));
     }
@@ -834,7 +843,7 @@ bool VEditor::findTextInRange(const QString &p_text,
 
         highlightSearchedWordUnderCursor(tcursor);
 
-        emit m_object->statusMessage(QObject::tr("Match found: %2 of %3")
+        emit m_object->statusMessage(QObject::tr("Match found: %1 of %2")
                                                 .arg(idx + 1)
                                                 .arg(result.size()));
     }
@@ -1504,7 +1513,7 @@ void VEditor::requestCompletion(bool p_reversed)
     cursor.clearSelection();
     setTextCursorW(cursor);
 
-    QStringList words = generateCompletionCandidates();
+    QStringList words = generateCompletionCandidates(p_reversed);
     QString prefix = fetchCompletionPrefix();
     // Smart case.
     Qt::CaseSensitivity cs = completionCaseSensitivity(prefix);
@@ -1526,7 +1535,7 @@ bool VEditor::isCompletionActivated() const
     return false;
 }
 
-QStringList VEditor::generateCompletionCandidates() const
+QStringList VEditor::generateCompletionCandidates(bool p_reversed) const
 {
     QString content = getContent();
     QTextCursor cursor = textCursorW();
@@ -1535,10 +1544,35 @@ QStringList VEditor::generateCompletionCandidates() const
 
     QRegExp reg("\\W+");
 
-    QStringList ret = content.mid(end).split(reg, QString::SkipEmptyParts);
-    ret.append(content.left(start).split(reg, QString::SkipEmptyParts));
-    ret.removeDuplicates();
-    return ret;
+    QStringList above = content.left(start).split(reg, QString::SkipEmptyParts);
+    QStringList below = content.mid(end).split(reg, QString::SkipEmptyParts);
+
+    if (p_reversed) {
+        QStringList rev;
+        rev.reserve(above.size() + below.size());
+        for (auto it = above.rbegin(); it != above.rend(); ++it) {
+            rev.append(*it);
+        }
+
+        for (auto it = below.rbegin(); it != below.rend(); ++it) {
+            rev.append(*it);
+        }
+
+        rev.removeDuplicates();
+
+        QStringList res;
+        res.reserve(rev.size());
+        for (auto it = rev.rbegin(); it != rev.rend(); ++it) {
+            res.append(*it);
+        }
+
+        return res;
+    } else {
+        // below + above.
+        below.append(above);
+        below.removeDuplicates();
+        return below;
+    }
 }
 
 QString VEditor::fetchCompletionPrefix() const
@@ -1553,7 +1587,7 @@ QString VEditor::fetchCompletionPrefix() const
     QString prefix;
     while (pos >= blockPos) {
         QChar ch = m_document->characterAt(pos);
-        if (ch.isSpace() || VEditUtils::isWordSeparator(ch)) {
+        if (VEditUtils::isSpaceOrWordSeparator(ch)) {
             break;
         }
 
@@ -1655,4 +1689,19 @@ void VEditor::nextMatch(bool p_forward)
                         m_findInfo.m_start,
                         m_findInfo.m_end);
     }
+}
+
+void VEditor::pastePlainText()
+{
+    if (!m_file || !m_file->isModifiable()) {
+        return;
+    }
+
+    QClipboard *clipboard = QApplication::clipboard();
+    QString text(clipboard->text());
+    if (text.isEmpty()) {
+        return;
+    }
+
+    m_editOps->insertText(text);
 }

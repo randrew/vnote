@@ -23,6 +23,7 @@ class QWebEngineView;
 class QAction;
 class QTreeWidgetItem;
 class QFormLayout;
+class QTemporaryFile;
 
 #if !defined(V_ASSERT)
     #define V_ASSERT(cond) ((!(cond)) ? qt_assert(#cond, __FILE__, __LINE__) : qt_noop())
@@ -133,6 +134,9 @@ public:
     static QVector<ImageLink> fetchImagesFromMarkdownFile(VFile *p_file,
                                                           ImageLink::ImageLinkType p_type = ImageLink::All);
 
+    // Use PegParser to parse @p_content to get all image link regions.
+    static QVector<VElementRegion> fetchImageRegionsUsingParser(const QString &p_content);
+
     // Return the absolute path of @p_url according to @p_basePath.
     static QString linkUrlToPath(const QString &p_basePath, const QString &p_url);
 
@@ -195,7 +199,9 @@ public:
                                         bool p_addToc = false);
 
     // @p_renderBg is the background name.
-    static QString generateExportHtmlTemplate(const QString &p_renderBg, bool p_includeMathJax);
+    static QString generateExportHtmlTemplate(const QString &p_renderBg,
+                                              bool p_includeMathJax,
+                                              bool p_outlinePanel);
 
     static QString generateSimpleHtmlTemplate(const QString &p_body);
 
@@ -308,7 +314,7 @@ public:
     // Create and return a QComboBox.
     static QComboBox *getComboBox(QWidget *p_parent = nullptr);
 
-    static QWebEngineView *getWebEngineView(QWidget *p_parent = nullptr);
+    static QWebEngineView *getWebEngineView(const QColor &p_background, QWidget *p_parent = nullptr);
 
     static void setDynamicProperty(QWidget *p_widget, const char *p_prop, bool p_val = true);
 
@@ -330,10 +336,6 @@ public:
 
     // From QProcess code.
     static QStringList parseCombinedArgString(const QString &p_program);
-
-    static const QTreeWidgetItem *topLevelTreeItem(const QTreeWidgetItem *p_item);
-
-    static int childIndexOfTreeItem(const QTreeWidgetItem *p_item);
 
     // Read QImage from local file @p_filePath.
     // Directly calling QImage(p_filePath) will judge the image format from the suffix,
@@ -383,6 +385,15 @@ public:
     // @p_path: file path of file or dir.
     static QString parentDirName(const QString &p_path);
 
+    // Remove query in the url (?xxx).
+    static QString purifyUrl(const QString &p_url);
+
+    static QTemporaryFile *createTemporaryFile(QString p_suffix);
+
+    static QString purifyImageTitle(QString p_title);
+
+    static QString escapeHtml(QString p_text);
+
     // Regular expression for image link.
     // ![image title]( http://github.com/tamlok/vnote.jpg "alt text" =200x100)
     // Captured texts (need to be trimmed):
@@ -391,7 +402,7 @@ public:
     // 3. Image Optional Title with double quotes or quotes;
     // 4. Unused;
     // 5. Unused;
-    // 6. Unused;
+    // 6. Width and height text;
     // 7. Width;
     // 8. Height;
     static const QString c_imageLinkRegExp;
@@ -441,9 +452,6 @@ private:
     VUtils() {}
 
     static void initAvailableLanguage();
-
-    // Use PegParser to parse @p_content to get all image link regions.
-    static QVector<VElementRegion> fetchImageRegionsUsingParser(const QString &p_content);
 
     // Delete file/directory specified by @p_path by moving it to the recycle bin
     // folder @p_recycleBinFolderPath.

@@ -258,6 +258,8 @@ private slots:
     // Copy selected text as HTML.
     void handleCopyAsAction(QAction *p_act);
 
+    void handleLinkToAttachmentAction(QAction *p_act);
+
 private:
     void updateHeadersHelper(const QVector<VElementRegion> &p_headerRegions, bool p_configChanged);
 
@@ -297,6 +299,8 @@ private:
                                const QTextBlock &p_block,
                                int p_pos);
 
+    void initAttachmentMenu(QMenu *p_menu);
+
     void insertImageLink(const QString &p_text, const QString &p_url);
 
     void setFontPointSizeByStyleSheet(int p_ptSize);
@@ -313,7 +317,7 @@ private:
 
     bool processUrlFromMimeData(const QMimeData *p_source);
 
-    bool processTextFromMimeData(const QMimeData *p_source);
+    void replaceTextWithLocalImages(QString &p_text);
 
     PegMarkdownHighlighter *m_pegHighlighter;
 

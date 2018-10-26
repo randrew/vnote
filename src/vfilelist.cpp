@@ -26,11 +26,6 @@ extern VConfigManager *g_config;
 extern VNote *g_vnote;
 extern VMainWindow *g_mainWin;
 
-const QString VFileList::c_infoShortcutSequence = "F2";
-const QString VFileList::c_copyShortcutSequence = "Ctrl+C";
-const QString VFileList::c_cutShortcutSequence = "Ctrl+X";
-const QString VFileList::c_pasteShortcutSequence = "Ctrl+V";
-
 VFileList::VFileList(QWidget *parent)
     : QWidget(parent),
       VNavigationMode(),
@@ -88,12 +83,14 @@ void VFileList::setupUI()
 
     titleLayout->setContentsMargins(0, 0, 0, 0);
 
-    fileList = new VListWidget(this);
+    fileList = new VFileListWidget(this);
     fileList->setContextMenuPolicy(Qt::CustomContextMenu);
-    fileList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     fileList->setObjectName("FileList");
     fileList->setAttribute(Qt::WA_MacShowFocusRect, false);
-    fileList->setMouseTracking(true);
+    fileList->setMimeDataGetter([this](const QString &p_format,
+                                       const QList<QListWidgetItem *> &p_items) {
+                return getMimeData(p_format, p_items);
+            });
 
     QVBoxLayout *mainLayout = new QVBoxLayout;
     mainLayout->addLayout(titleLayout);
@@ -119,28 +116,28 @@ void VFileList::setupUI()
 
 void VFileList::initShortcuts()
 {
-    QShortcut *infoShortcut = new QShortcut(QKeySequence(c_infoShortcutSequence), this);
+    QShortcut *infoShortcut = new QShortcut(QKeySequence(Shortcut::c_info), this);
     infoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(infoShortcut, &QShortcut::activated,
             this, [this](){
                 fileInfo();
             });
 
-    QShortcut *copyShortcut = new QShortcut(QKeySequence(c_copyShortcutSequence), this);
+    QShortcut *copyShortcut = new QShortcut(QKeySequence(Shortcut::c_copy), this);
     copyShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(copyShortcut, &QShortcut::activated,
             this, [this](){
                 copySelectedFiles();
             });
 
-    QShortcut *cutShortcut = new QShortcut(QKeySequence(c_cutShortcutSequence), this);
+    QShortcut *cutShortcut = new QShortcut(QKeySequence(Shortcut::c_cut), this);
     cutShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(cutShortcut, &QShortcut::activated,
             this, [this](){
                 cutSelectedFiles();
             });
 
-    QShortcut *pasteShortcut = new QShortcut(QKeySequence(c_pasteShortcutSequence), this);
+    QShortcut *pasteShortcut = new QShortcut(QKeySequence(Shortcut::c_paste), this);
     pasteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(pasteShortcut, &QShortcut::activated,
             this, [this](){
@@ -605,7 +602,7 @@ void VFileList::contextMenuRequested(QPoint pos)
         menu.addAction(deleteFileAct);
 
         QAction *copyAct = new QAction(VIconUtils::menuIcon(":/resources/icons/copy.svg"),
-                                       tr("&Copy\t%1").arg(VUtils::getShortcutText(c_copyShortcutSequence)),
+                                       tr("&Copy\t%1").arg(VUtils::getShortcutText(Shortcut::c_copy)),
                                        &menu);
         copyAct->setToolTip(tr("Copy selected notes"));
         connect(copyAct, &QAction::triggered,
@@ -613,7 +610,7 @@ void VFileList::contextMenuRequested(QPoint pos)
         menu.addAction(copyAct);
 
         QAction *cutAct = new QAction(VIconUtils::menuIcon(":/resources/icons/cut.svg"),
-                                      tr("C&ut\t%1").arg(VUtils::getShortcutText(c_cutShortcutSequence)),
+                                      tr("C&ut\t%1").arg(VUtils::getShortcutText(Shortcut::c_cut)),
                                       &menu);
         cutAct->setToolTip(tr("Cut selected notes"));
         connect(cutAct, &QAction::triggered,
@@ -627,7 +624,7 @@ void VFileList::contextMenuRequested(QPoint pos)
         }
 
         QAction *pasteAct = new QAction(VIconUtils::menuIcon(":/resources/icons/paste.svg"),
-                                        tr("&Paste\t%1").arg(VUtils::getShortcutText(c_pasteShortcutSequence)),
+                                        tr("&Paste\t%1").arg(VUtils::getShortcutText(Shortcut::c_paste)),
                                         &menu);
         pasteAct->setToolTip(tr("Paste notes in current folder"));
         connect(pasteAct, &QAction::triggered,
@@ -686,7 +683,7 @@ void VFileList::contextMenuRequested(QPoint pos)
 
         if (selectedSize == 1) {
             QAction *fileInfoAct = new QAction(VIconUtils::menuIcon(":/resources/icons/note_info.svg"),
-                                               tr("&Info (Rename)\t%1").arg(VUtils::getShortcutText(c_infoShortcutSequence)),
+                                               tr("&Info (Rename)\t%1").arg(VUtils::getShortcutText(Shortcut::c_info)),
                                                &menu);
             fileInfoAct->setToolTip(tr("View and edit current note's information"));
             connect(fileInfoAct, SIGNAL(triggered(bool)),
@@ -1286,7 +1283,9 @@ QMenu *VFileList::getOpenWithMenu()
                 if (item) {
                     VNoteFile *file = getVFile(item);
                     if (file
-                        && (!editArea->isFileOpened(file) || editArea->closeFile(file, false))) {
+                        && (!g_config->getCloseBeforeExternalEditor()
+                            || !editArea->isFileOpened(file)
+                            || editArea->closeFile(file, false))) {
                         QUrl url = QUrl::fromLocalFile(file->fetchPath());
                         QDesktopServices::openUrl(url);
                     }
@@ -1504,4 +1503,23 @@ void VFileList::selectFiles(const QVector<VNoteFile *> &p_files)
             }
         }
     }
+}
+
+QByteArray VFileList::getMimeData(const QString &p_format,
+                                  const QList<QListWidgetItem *> &p_items) const
+{
+    Q_UNUSED(p_format);
+    Q_ASSERT(p_format ==ClipboardConfig::c_format);
+
+    QJsonArray files;
+    for (int i = 0; i < p_items.size(); ++i) {
+        VNoteFile *file = getVFile(p_items[i]);
+        files.append(file->fetchPath());
+    }
+
+    QJsonObject obj;
+    obj[ClipboardConfig::c_type] = (int)ClipboardOpType::CopyFile;
+    obj[ClipboardConfig::c_files] = files;
+
+    return QJsonDocument(obj).toJson(QJsonDocument::Compact);
 }

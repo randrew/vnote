@@ -34,18 +34,37 @@ public:
 
     bool insertImageLink(const QString &p_linkText, const QString &p_linkUrl);
 
-private:
-    // Insert image from @oriImagePath as @path.
-    // @folderInLink: the folder part in the image link.
-    void insertImageFromPath(const QString &title, const QString &path,
-                             const QString &folderInLink, const QString &oriImagePath);
+    // @p_urlInLink and @p_destImagePath will be empty on failure.
+    void insertImageFromPath(const QString &p_title,
+                             const QString &p_folderPath,
+                             const QString &p_folderInLink,
+                             const QString &p_srcImagePath,
+                             bool p_insertText,
+                             QString &p_destImagePath,
+                             QString &p_urlInLink,
+                             int p_width = 0,
+                             int p_height = 0);
 
-    // @title: title of the inserted image;
-    // @path: the image folder path to insert the image in;
-    // @folderInLink: the folder part in the image link.
-    // @image: the image to be inserted;
-    void insertImageFromQImage(const QString &title, const QString &path,
-                               const QString &folderInLink, const QImage &image);
+private:
+    // Insert image from @p_srcImagePath as to @p_folderPath.
+    // @p_folderInLink: the folder part in the image link.
+    void insertImageFromPath(const QString &p_title,
+                             const QString &p_folderPath,
+                             const QString &p_folderInLink,
+                             const QString &p_srcImagePath,
+                             int p_width = 0,
+                             int p_height = 0);
+
+    // @p_title: title of the inserted image;
+    // @p_folderPath: the image folder path to insert the image in;
+    // @p_folderInLink: the folder part in the image link.
+    // @p_image: the image to be inserted;
+    void insertImageFromQImage(const QString &p_title,
+                               const QString &p_folderPath,
+                               const QString &p_folderInLink,
+                               const QImage &p_image,
+                               int p_width = 0,
+                               int p_height = 0);
 
     // Key press handlers.
     bool handleKeyTab(QKeyEvent *p_event);

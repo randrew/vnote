@@ -13,6 +13,7 @@
 国内的用户可以尝试在[百度云盘](http://pan.baidu.com/s/1jI5HROq)下载VNote的最新发行版本。
 
 ## Windows
+### 官方压缩包
 ![Windows Build Status](https://ci.appveyor.com/api/projects/status/github/tamlok/vnote?svg=true)
 
 - [Github releases](https://github.com/tamlok/vnote/releases)
@@ -20,8 +21,16 @@
 
 VNote不支持**XP**，因为QtWebEngineProcess无法在XP上运行。
 
-## Linux
+### Scoop
+VNote也可以通过Scoop的`extras`仓库进行安装。
 
+```shell
+scoop bucket add extras
+scoop install vnote
+scoop update vnote
+```
+
+## Linux
 ### AppImage
 [![Build Status](https://travis-ci.org/tamlok/vnote.svg?branch=master)](https://travis-ci.org/tamlok/vnote)
 
@@ -44,11 +53,11 @@ sudo zypper in vnote
 由于 Leap 42 及以下版本的 Qt 版本过低，我们无法在 OBS 上进行打包。请使用 AppImage 或自行构建。
 
 ### Arch Linux
-Arch Linux可以通过AUR中的 [vnote](https://aur.archlinux.org/packages/vnote/) 进行安装：
+Arch Linux可以通过AUR中的 [vnote-bin](https://aur.archlinux.org/packages/vnote-bin/) 进行安装：
 
 ```shell
-git clone https://aur.archlinux.org/vnote.git
-cd vnote
+git clone https://aur.archlinux.org/vnote-bin.git
+cd vnote-bin
 makepkg -sic
 ```
 
@@ -186,7 +195,7 @@ VNote中，几乎一切都是可以定制的，例如背景颜色、字体以及
 - [Qt 5.9](http://qt-project.org) (L-GPL v3)
 - [PEG Markdown Highlight](http://hasseg.org/peg-markdown-highlight/) (MIT License)
 - [Hoedown 3.0.7](https://github.com/hoedown/hoedown/) (ISC License)
-- [Marked](https://github.com/chjj/marked) (MIT License)
+- [Marked 0.5.1](https://github.com/markedjs/marked) (MIT License)
 - [Highlight.js](https://github.com/isagalaev/highlight.js/) (BSD License)
 - [Ionicons 2.0.1](https://github.com/driftyco/ionicons/) (MIT License)
 - [markdown-it 8.3.1](https://github.com/markdown-it/markdown-it) (MIT License)

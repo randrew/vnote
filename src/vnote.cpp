@@ -120,6 +120,7 @@ QString VNote::generateHtmlTemplate(const QString &p_renderBg,
     g_palette->fillStyle(templ);
 
     // Must replace the code block holder first.
+    templ.replace(HtmlHolder::c_commonCssHolder, g_config->getCommonCssUrl());
     templ.replace(HtmlHolder::c_codeBlockCssHolder, p_codeBlockStyleUrl);
     templ.replace(HtmlHolder::c_cssHolder, p_renderStyleUrl);
 
@@ -152,7 +153,7 @@ QString VNote::generateHtmlTemplate(const QString &p_renderBg,
 
 QString VNote::generateExportHtmlTemplate(const QString &p_renderBg)
 {
-    const QString c_exportTemplatePath(":/resources/export_template.html");
+    const QString c_exportTemplatePath(":/resources/export/export_template.html");
 
     QString cssStyle;
     if (!p_renderBg.isEmpty()) {
@@ -322,9 +323,13 @@ VNoteFile *VNote::getInternalFile(const QString &p_path)
     return file;
 }
 
-VFile *VNote::getFile(const QString &p_path)
+VFile *VNote::getFile(const QString &p_path, bool p_forceOrphan)
 {
-    VFile *file = getInternalFile(p_path);
+    VFile *file = NULL;
+    if (!p_forceOrphan) {
+        file = getInternalFile(p_path);
+    }
+
     if (!file) {
         QFileInfo fi(p_path);
         if (fi.isNativePath()) {

@@ -47,18 +47,22 @@ VTreeWidget::VTreeWidget(QWidget *p_parent)
     m_delegate = new VStyledItemDelegate(NULL, this);
     setItemDelegate(m_delegate);
 
+    m_expandTimer = new QTimer(this);
+    m_expandTimer->setSingleShot(true);
+    m_expandTimer->setInterval(100);
+    connect(m_expandTimer, &QTimer::timeout,
+            this, [this]() {
+                if (m_fitContent) {
+                    resizeColumnToContents(0);
+                }
+
+                emit itemExpandedOrCollapsed();
+            });
+
     connect(this, &VTreeWidget::itemExpanded,
-            this, [this]() {
-                if (m_fitContent) {
-                    resizeColumnToContents(0);
-                }
-            });
+            m_expandTimer, static_cast<void(QTimer::*)(void)>(&QTimer::start));
     connect(this, &VTreeWidget::itemCollapsed,
-            this, [this]() {
-                if (m_fitContent) {
-                    resizeColumnToContents(0);
-                }
-            });
+            m_expandTimer, static_cast<void(QTimer::*)(void)>(&QTimer::start));
 }
 
 void VTreeWidget::keyPressEvent(QKeyEvent *p_event)
@@ -252,7 +256,9 @@ static QTreeWidgetItem *lastItemOfTree(QTreeWidgetItem *p_item)
     }
 }
 
-QTreeWidgetItem *VTreeWidget::nextSibling(QTreeWidgetItem *p_item, bool p_forward)
+QTreeWidgetItem *VTreeWidget::nextSibling(const QTreeWidget *p_tree,
+                                          QTreeWidgetItem *p_item,
+                                          bool p_forward)
 {
     if (!p_item) {
         return NULL;
@@ -276,10 +282,10 @@ QTreeWidgetItem *VTreeWidget::nextSibling(QTreeWidgetItem *p_item, bool p_forwar
         return pa->child(idx);
     } else {
         // Top level item.
-        int idx = indexOfTopLevelItem(p_item);
+        int idx = p_tree->indexOfTopLevelItem(p_item);
         if (p_forward) {
             ++idx;
-            if (idx >= topLevelItemCount()) {
+            if (idx >= p_tree->topLevelItemCount()) {
                 return NULL;
             }
         } else {
@@ -289,7 +295,7 @@ QTreeWidgetItem *VTreeWidget::nextSibling(QTreeWidgetItem *p_item, bool p_forwar
             }
         }
 
-        return topLevelItem(idx);
+        return p_tree->topLevelItem(idx);
     }
 }
 
@@ -305,13 +311,15 @@ void VTreeWidget::selectNextItem(bool p_forward)
         return;
     }
 
-    QTreeWidgetItem *nItem = nextItem(item, p_forward);
+    QTreeWidgetItem *nItem = nextItem(this, item, p_forward);
     if (nItem) {
         setCurrentItem(nItem, 0, QItemSelectionModel::ClearAndSelect);
     }
 }
 
-QTreeWidgetItem *VTreeWidget::nextItem(QTreeWidgetItem *p_item, bool p_forward)
+QTreeWidgetItem *VTreeWidget::nextItem(const QTreeWidget *p_tree,
+                                       QTreeWidgetItem *p_item,
+                                       bool p_forward)
 {
     QTreeWidgetItem *nItem = NULL;
     if (p_forward) {
@@ -319,12 +327,12 @@ QTreeWidgetItem *VTreeWidget::nextItem(QTreeWidgetItem *p_item, bool p_forward)
             nItem = p_item->child(0);
         } else {
             while (!nItem && p_item) {
-                nItem = nextSibling(p_item, true);
+                nItem = nextSibling(p_tree, p_item, true);
                 p_item = p_item->parent();
             }
         }
     } else {
-        nItem = nextSibling(p_item, false);
+        nItem = nextSibling(p_tree, p_item, false);
         if (!nItem) {
             nItem = p_item->parent();
         } else {
@@ -343,5 +351,90 @@ void VTreeWidget::selectParentItem()
         if (pitem) {
             setCurrentItem(pitem, 0, QItemSelectionModel::ClearAndSelect);
         }
+    }
+}
+
+static bool isItemTreeExpanded(const QTreeWidgetItem *p_item)
+{
+    if (!p_item) {
+        return true;
+    }
+
+    if (p_item->isHidden() || !p_item->isExpanded()) {
+        return false;
+    }
+
+    int cnt = p_item->childCount();
+    for (int i = 0; i < cnt; ++i) {
+        if (!isItemTreeExpanded(p_item->child(i))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool VTreeWidget::isTreeExpanded(const QTreeWidget *p_tree)
+{
+    int cnt = p_tree->topLevelItemCount();
+    for (int i = 0; i < cnt; ++i) {
+        if (!isItemTreeExpanded(p_tree->topLevelItem(i))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void VTreeWidget::expandCollapseAll(QTreeWidget *p_tree)
+{
+    QTreeWidgetItem *topLevelItem = NULL;
+    QTreeWidgetItem *item = p_tree->currentItem();
+    if (item) {
+        topLevelItem = const_cast<QTreeWidgetItem *>(topLevelTreeItem(item));
+    }
+
+    bool expanded = isTreeExpanded(p_tree);
+    if (expanded) {
+        p_tree->collapseAll();
+    } else {
+        p_tree->expandAll();
+
+    }
+
+    VTreeWidget *vtree = dynamic_cast<VTreeWidget *>(p_tree);
+    if (vtree) {
+        if (vtree->m_fitContent) {
+            vtree->resizeColumnToContents(0);
+        }
+
+        emit vtree->itemExpandedOrCollapsed();
+    }
+
+    if (topLevelItem) {
+        p_tree->setCurrentItem(topLevelItem, 0, QItemSelectionModel::ClearAndSelect);
+        p_tree->scrollToItem(topLevelItem);
+    }
+}
+
+const QTreeWidgetItem *VTreeWidget::topLevelTreeItem(const QTreeWidgetItem *p_item)
+{
+    if (!p_item) {
+        return NULL;
+    }
+
+    if (p_item->parent()) {
+        return topLevelTreeItem(p_item->parent());
+    } else {
+        return p_item;
+    }
+}
+
+int VTreeWidget::childIndexOfTreeItem(const QTreeWidgetItem *p_item)
+{
+    if (p_item->parent()) {
+        return p_item->parent()->indexOfChild(const_cast<QTreeWidgetItem *>(p_item));
+    } else {
+        return 0;
     }
 }
